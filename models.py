@@ -145,13 +145,13 @@ class Body25(nn.Module):
             ('conv1_1', nn.Conv2d(3, 64, 3, 1, 1)),
             ('relu1_1', nn.ReLU()),
             ('conv1_2', nn.Conv2d(64, 64, 3, 1, 1)),
-            ('relu1_1', nn.ReLU()),
+            ('relu1_2', nn.ReLU()),
             ('pool1_stage1', nn.MaxPool2d(2, 2)),
 
             ('conv2_1', nn.Conv2d(64, 128, 3, 1, 1)),
             ('relu2_1', nn.ReLU()),
             ('conv2_2', nn.Conv2d(128, 128, 3, 1, 1)),
-            ('relu2_1', nn.ReLU()),
+            ('relu2_2', nn.ReLU()),
             ('pool2_stage1', nn.MaxPool2d(2, 2)),
 
             ('conv3_1', nn.Conv2d(128, 256, 3, 1, 1)),
@@ -211,7 +211,7 @@ class Body25(nn.Module):
         state.update(weights_load)
         self.vgg19.load_state_dict(state)
 
-    def load_caffe_se(self, start_name, end_name, caffe_net):
+    def load_caffe_se(self, start_name, end_name, caffe_net, torch_net):
         weights_load = {}
         i = -1
         start = False
@@ -221,11 +221,11 @@ class Body25(nn.Module):
 
             i+=1
             W = caffe_net.params[key][0].data[...]
-            weights_load[self.pafA.state_dict().keys()[i]] = torch.tensor(W)
+            weights_load[torch_net.state_dict().keys()[i]] = torch.tensor(W)
             if len(caffe_net.params[key]) > 1:
                 i+=1
                 b = caffe_net.params[key][1].data[...]
-                weights_load[self.pafA.state_dict().keys()[i]] = torch.tensor(b)
+                weights_load[torch_net.state_dict().keys()[i]] = torch.tensor(b)
 
             if key == end_name: start = False
 
@@ -252,25 +252,25 @@ class Body25(nn.Module):
 
 
         # Paf A
-        weights_load = self.load_caffe_se("Mconv1_stage0_L2_0", "Mconv7_stage0_L2", caffe_net)
+        weights_load = self.load_caffe_se("Mconv1_stage0_L2_0", "Mconv7_stage0_L2", caffe_net, self.pafA)
         state = self.pafA.state_dict()
         state.update(weights_load)
         self.pafA.load_state_dict(state)
 
         # Hm A
-        weights_load = self.load_caffe_se("Mconv1_stage0_L1_0", "Mconv7_stage0_L1", caffe_net)
+        weights_load = self.load_caffe_se("Mconv1_stage0_L1_0", "Mconv7_stage0_L1", caffe_net, self.hmA)
         state = self.hmA.state_dict()
         state.update(weights_load)
         self.hmA.load_state_dict(state)
 
         # Paf B
-        weights_load = self.load_caffe_se("Mconv1_stage1_L2_0", "Mconv7_stage1_L2", caffe_net)
+        weights_load = self.load_caffe_se("Mconv1_stage1_L2_0", "Mconv7_stage1_L2", caffe_net, self.pafB)
         state = self.pafB.state_dict()
         state.update(weights_load)
         self.pafB.load_state_dict(state)
 
         # Hm B
-        weights_load = self.load_caffe_se("Mconv1_stage2_L1_0", "Mconv7_stage2_L1", caffe_net)
+        weights_load = self.load_caffe_se("Mconv1_stage2_L1_0", "Mconv7_stage2_L1", caffe_net, self.hmB)
         state = self.hmB.state_dict()
         state.update(weights_load)
         self.hmB.load_state_dict(state)

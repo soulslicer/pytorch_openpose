@@ -56,7 +56,7 @@ if not reload:
         model.load_state_dict(state['state_dict'])
         print("Loaded Iteration " + str(iterations))
 
-#model.load_caffe()
+model.net.load_caffe()
 
 params = {
     "batch_size" : 1,
@@ -145,7 +145,7 @@ while 1:
     cv2.imshow("hm_pred_viz", cv2.resize(hm_pred_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
     cv2.imshow("hm_truth_viz", cv2.resize(hm_truth_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
     cv2.imshow("img", img_viz+0.5)
-    cv2.waitKey(15)
+    cv2.waitKey(-1)
 
     # print(pafs_truth[0].shape)
     # print(hms_truth[0].shape)
