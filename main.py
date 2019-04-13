@@ -31,6 +31,8 @@ def signal_handler(sig, frame):
     global exit
     exit = 1
 signal.signal(signal.SIGINT, signal_handler)
+sys.path.append('/home/raaj/openpose_orig/build/python/')
+from openpose import pyopenpose as op
 
 from models import *
 
@@ -41,9 +43,19 @@ parser.add_argument('--ngpu', type=int, default=1,
 parser.add_argument('--reload', action='store_true')
 args = parser.parse_args()
 
+# Sample OP Network
+params = dict()
+params["model_folder"] = "/home/raaj/openpose_orig/models/"
+params["body"] = 2  # Disable OP Network
+params["upsampling_ratio"] = 0
+params["model_pose"] = "BODY_25B"
+opWrapper = op.WrapperPython()
+opWrapper.configure(params)
+opWrapper.start()
+
 # Setup Model
 NAME = "weights"
-model = Model(Body25("3x3"), ngpu=int(args.ngpu)).cuda()
+model = Model(Body25("7x7"), ngpu=int(args.ngpu)).cuda()
 model.train()
 
 # Load weights etc.
@@ -56,10 +68,11 @@ if not reload:
         model.load_state_dict(state['state_dict'])
         print("Loaded Iteration " + str(iterations))
 
-model.net.load_caffe()
+# # Load Caffe?
+# model.net.load_caffe()
 
 params = {
-    "batch_size" : 1,
+    "batch_size" : 10,
     "stride": 8,
     "max_degree_rotations": "45.0",
     "crop_size_x": 368,
@@ -134,10 +147,22 @@ while 1:
             'state_dict': model.state_dict(),
         }, NAME)
     if exit: sys.exit()
-
-
     print((iterations,loss))
 
+    # # OP Test
+    # test_index = 0
+    # hm_final = hms_pred[ITERATIONS-1][test_index,:,:,:]
+    # paf_final = pafs_pred[ITERATIONS-1][test_index,:,:,:]
+    # poseHeatMaps = torch.cat([hm_final, paf_final], 0).detach().cpu().numpy().copy()
+    # imageToProcess = imgs.detach().cpu().numpy().copy()[test_index,:,:,:]
+    # imageToProcess = (cv2.merge([imageToProcess[0,:,:]+0.5, imageToProcess[1,:,:]+0.5, imageToProcess[2,:,:]+0.5])*255).astype(np.uint8)
+    # datum = op.Datum()
+    # datum.cvInputData = imageToProcess
+    # datum.poseNetOutput = poseHeatMaps
+    # opWrapper.emplaceAndPop([datum])
+    # print("Body keypoints: \n" + str(datum.poseKeypoints))
+    # cv2.imshow("OpenPose 1.4.0 - Tutorial Python API", datum.cvOutputData)
+    # cv2.waitKey(0)
 
     img_viz = imgs.detach().cpu().numpy().copy()[0,0,:,:]
     hm_pred_viz = hms_pred[ITERATIONS-1].detach().cpu().numpy().copy()[0,0,:,:]
@@ -145,67 +170,9 @@ while 1:
     cv2.imshow("hm_pred_viz", cv2.resize(hm_pred_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
     cv2.imshow("hm_truth_viz", cv2.resize(hm_truth_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
     cv2.imshow("img", img_viz+0.5)
-    cv2.waitKey(-1)
-
-    # print(pafs_truth[0].shape)
-    # print(hms_truth[0].shape)
+    cv2.waitKey(15)
 
 
-    # print(batch.label.shape)
-    # print(batch.data.shape)
-
-
-
-
-
-
-# # Xavier Init
-
-# empty_image = torch.tensor(np.zeros((1,3,656,368), dtype=np.float32)).cuda()
-# model.forward(empty_image)
-
-# for i in range(0,5):
-#     torch.cuda.synchronize()
-#     start_time = time.time()
-#     model.forward(empty_image)
-#     torch.cuda.synchronize()
-#     elapsed_time = time.time() - start_time
-
-#     print(elapsed_time)
-
-# stop
-
-# ######
-
-# # Load Caffe Try?
-# net = caffe.Net('/media/raaj/Storage/openpose_train/training_results_gines_new/pose_image/pose_deploy.prototxt',
-#                 '/media/raaj/Storage/openpose_train/training_results_gines_new/pose_image/model/pose_iter_608000.caffemodel',
-#                 caffe.TEST)
-
-# weights_load = {}
-# for key in net.params:
-#     print(key)
-#     W = net.params[key][0].data[...]
-#     weights_load["vgg19"+"."+key+"."+"weight"] = torch.tensor(W)
-#     if len(net.params[key]) > 1:
-#         b = net.params[key][1].data[...]
-#         weights_load["vgg19"+"."+key+"."+"bias"] = torch.tensor(b)
-#     if key == "conv4_2": break
-# # stop
-
-# # # Load VGG19
-# # vgg19_model_url = 'https://download.pytorch.org/models/vgg19-dcbb9e9d.pth'
-# # vgg_state_dict = model_zoo.load_url(vgg19_model_url, model_dir=dir_path)  # save to local path
-# # vgg_keys = vgg_state_dict.keys()
-# # weights_load = {}
-# # for i in range(2):  # use first 10 conv layers of vgg19, 20 weights in all (weight+bias)
-# #     weights_load[list(vgg19.state_dict().keys())[i]] = vgg_state_dict[list(vgg_keys)[i]]
-
-# # print(weights_load.keys())
-# # print(weights_load["vgg19.conv1_1.bias"].dtype)
-# # print(weights_load["vgg19.conv1_1.weight"].dtype)
-# # stop
-
-# state = model.state_dict()
-# state.update(weights_load)
-# model.load_state_dict(state)
+"""
+Training of POF?
+"""
