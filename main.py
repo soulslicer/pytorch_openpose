@@ -40,6 +40,8 @@ from models import *
 parser = argparse.ArgumentParser(description='OP')
 parser.add_argument('--ngpu', type=int, default=1,
                     help='number of GPUs to use')
+parser.add_argument('--batch', type=int, default=10,
+                    help='batch size')
 parser.add_argument('--reload', action='store_true')
 args = parser.parse_args()
 
@@ -72,7 +74,7 @@ if not reload:
 # model.net.load_caffe()
 
 params = {
-    "batch_size" : 10,
+    "batch_size" : int(args.batch),
     "stride": 8,
     "max_degree_rotations": "45.0",
     "crop_size_x": 368,
@@ -140,7 +142,7 @@ while 1:
     optimizer.step()
 
     # Save
-    if iterations % 20 == 0 or exit:
+    if iterations % 2000 == 0 or exit:
         print("Saving")
         save_checkpoint({
             'iterations': iterations,
@@ -164,13 +166,13 @@ while 1:
     # cv2.imshow("OpenPose 1.4.0 - Tutorial Python API", datum.cvOutputData)
     # cv2.waitKey(0)
 
-    img_viz = imgs.detach().cpu().numpy().copy()[0,0,:,:]
-    hm_pred_viz = hms_pred[ITERATIONS-1].detach().cpu().numpy().copy()[0,0,:,:]
-    hm_truth_viz = hm_truth_m.cpu().numpy().copy()[0,0,:,:]
-    cv2.imshow("hm_pred_viz", cv2.resize(hm_pred_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
-    cv2.imshow("hm_truth_viz", cv2.resize(hm_truth_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
-    cv2.imshow("img", img_viz+0.5)
-    cv2.waitKey(15)
+    # img_viz = imgs.detach().cpu().numpy().copy()[0,0,:,:]
+    # hm_pred_viz = hms_pred[ITERATIONS-1].detach().cpu().numpy().copy()[0,0,:,:]
+    # hm_truth_viz = hm_truth_m.cpu().numpy().copy()[0,0,:,:]
+    # cv2.imshow("hm_pred_viz", cv2.resize(hm_pred_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
+    # cv2.imshow("hm_truth_viz", cv2.resize(hm_truth_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
+    # cv2.imshow("img", img_viz+0.5)
+    # cv2.waitKey(15)
 
 
 """
