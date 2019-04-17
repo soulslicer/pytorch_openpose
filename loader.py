@@ -55,7 +55,6 @@ class OPLoader(torch.utils.data.Dataset):
     def __getitem__(self, index):
         pid = os.getpid() % self.WORKER_SIZE
         batch = opcaffe.Batch()
-        print("call")
         self.workers[pid].load(batch)
         return torch.tensor(batch.data), torch.tensor(batch.label)
 
