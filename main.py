@@ -35,6 +35,7 @@ sys.path.append('/home/raaj/openpose_orig/build/python/')
 from openpose import pyopenpose as op
 
 from models import *
+from loader import *
 
 # Parsers
 parser = argparse.ArgumentParser(description='OP')
@@ -73,28 +74,36 @@ if not reload:
 # # Load Caffe?
 # model.net.load_caffe()
 
-params = {
-    "batch_size" : int(args.batch),
-    "stride": 8,
-    "max_degree_rotations": "45.0",
-    "crop_size_x": 368,
-    "crop_size_y": 368,
-    "center_perterb_max": 40.0,
-    "center_swap_prob": 0.0,
-    "scale_prob": 1.0,
-    "scale_mins": "0.333333333333",
-    "scale_maxs": "1.5",
-    "target_dist": 0.600000023842,
-    "number_max_occlusions": "2",
-    "sigmas": "7.0",
-    "models": "COCO_25B_23;COCO_25B_17;MPII_25B_16;PT_25B_15",
-    "sources": "/media/raaj/Storage/openpose_train/dataset/lmdb_coco2017_foot;/media/raaj/Storage/openpose_train/dataset/lmdb_coco;/media/raaj/Storage/openpose_train/dataset/lmdb_mpii;/media/raaj/Storage/openpose_train/dataset/lmdb_pt2_train",
-    "probabilities": "0.05;0.85;0.05;0.05",
-    "source_background": "/media/raaj/Storage/openpose_train/dataset/lmdb_background",
-    "normalization": 0,
-    "add_distance": 0
-}
-myClass = opcaffe.OPCaffe(params)
+# params = {
+#     "batch_size" : int(args.batch),
+#     "stride": 8,
+#     "max_degree_rotations": "45.0",
+#     "crop_size_x": 368,
+#     "crop_size_y": 368,
+#     "center_perterb_max": 40.0,
+#     "center_swap_prob": 0.0,
+#     "scale_prob": 1.0,
+#     "scale_mins": "0.333333333333",
+#     "scale_maxs": "1.5",
+#     "target_dist": 0.600000023842,
+#     "number_max_occlusions": "2",
+#     "sigmas": "7.0",
+#     "models": "COCO_25B_23;COCO_25B_17;MPII_25B_16;PT_25B_15",
+#     "sources": "/media/raaj/Storage/openpose_train/dataset/lmdb_coco2017_foot;/media/raaj/Storage/openpose_train/dataset/lmdb_coco;/media/raaj/Storage/openpose_train/dataset/lmdb_mpii;/media/raaj/Storage/openpose_train/dataset/lmdb_pt2_train",
+#     "probabilities": "0.05;0.85;0.05;0.05",
+#     "source_background": "/media/raaj/Storage/openpose_train/dataset/lmdb_background",
+#     "normalization": 0,
+#     "add_distance": 0
+# }
+# myClass = opcaffe.OPCaffe(params)
+
+# Caffe Loader
+WORKER_SIZE = int(args.ngpu)
+BATCH_SIZE = int(args.batch)
+kwargs = {'num_workers': WORKER_SIZE, 'pin_memory': True}
+train_loader = torch.utils.data.DataLoader(
+    OPLoader(WORKER_SIZE, BATCH_SIZE),
+    batch_size=WORKER_SIZE, shuffle=False, **kwargs)
 
 # Loss
 lr = 0.000100
@@ -108,18 +117,23 @@ parameters = [
 mseLoss = torch.nn.MSELoss()
 optimizer = optim.Adam(parameters, lr=lr, betas=(0.9, 0.999))
 
+# # Iterate
+# while 1:
+#     iterations += 1
+#     batch = opcaffe.Batch()
+#     myClass.load(batch)
+
 # Iterate
-while 1:
-    iterations += 1
-    batch = opcaffe.Batch()
-    myClass.load(batch)
+for batch_idx, (data, label) in enumerate(train_loader):
+    data = data.flatten(0,1)
+    label = label.flatten(0,1)    
 
     # Split
-    paf_mask = torch.tensor(batch.label[:, 0:TOTAL_PAFS]).cuda()
-    hm_mask = torch.tensor(batch.label[:, TOTAL_PAFS:TOTAL_PAFS+TOTAL_HMS]).cuda()
-    paf_truth = torch.tensor(batch.label[:, TOTAL_PAFS+TOTAL_HMS:TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS]).cuda()
-    hm_truth = torch.tensor(batch.label[:, TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS:TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS+TOTAL_HMS]).cuda()
-    imgs = torch.tensor(batch.data).cuda()
+    paf_mask = label[:, 0:TOTAL_PAFS].cuda()
+    hm_mask = label[:, TOTAL_PAFS:TOTAL_PAFS+TOTAL_HMS].cuda()
+    paf_truth = label[:, TOTAL_PAFS+TOTAL_HMS:TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS].cuda()
+    hm_truth = label[:, TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS:TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS+TOTAL_HMS].cuda()
+    imgs = data.cuda()
 
     # Mask
     paf_truth_m = torch.mul(paf_truth, paf_mask)

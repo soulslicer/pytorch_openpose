@@ -250,7 +250,6 @@ class Body25(nn.Module):
         state.update(weights_load)
         self.vgg19.load_state_dict(state)
 
-
         # Paf A
         weights_load = self.load_caffe_se("Mconv1_stage0_L2_0", "Mconv7_stage0_L2", caffe_net, self.pafA)
         state = self.pafA.state_dict()
