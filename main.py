@@ -125,6 +125,7 @@ optimizer = optim.Adam(parameters, lr=lr, betas=(0.9, 0.999))
 
 # Iterate
 for batch_idx, (data, label) in enumerate(train_loader):
+    iterations += 1
     data = data.flatten(0,1)
     label = label.flatten(0,1)    
 
