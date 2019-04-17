@@ -116,6 +116,7 @@ parameters = [
     ]
 mseLoss = torch.nn.MSELoss()
 optimizer = optim.Adam(parameters, lr=lr, betas=(0.9, 0.999))
+lr_half_sets = [10, 200000, 300000, 360000, 420000, 480000, 540000, 600000, 700000, 800000]
 
 # # Iterate
 # while 1:
@@ -123,71 +124,81 @@ optimizer = optim.Adam(parameters, lr=lr, betas=(0.9, 0.999))
 #     batch = opcaffe.Batch()
 #     myClass.load(batch)
 
+def half_lr(optimizer):
+    for param_group in optimizer.param_groups:
+        param_group['lr'] /= 2.
+
 # Iterate
-for batch_idx, (data, label) in enumerate(train_loader):
-    iterations += 1
-    data = data.flatten(0,1)
-    label = label.flatten(0,1)    
+while 1:
+    for batch_idx, (data, label) in enumerate(train_loader):
+        iterations += 1
+        data = data.flatten(0,1)
+        label = label.flatten(0,1)   
 
-    # Split
-    paf_mask = label[:, 0:TOTAL_PAFS].cuda()
-    hm_mask = label[:, TOTAL_PAFS:TOTAL_PAFS+TOTAL_HMS].cuda()
-    paf_truth = label[:, TOTAL_PAFS+TOTAL_HMS:TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS].cuda()
-    hm_truth = label[:, TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS:TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS+TOTAL_HMS].cuda()
-    imgs = data.cuda()
+        # LR
+        if iterations in lr_half_sets:
+            print("Half LR")
+            half_lr(optimizer) 
 
-    # Mask
-    paf_truth_m = torch.mul(paf_truth, paf_mask)
-    hm_truth_m = torch.mul(hm_truth, hm_mask)
+        # Split
+        paf_mask = label[:, 0:TOTAL_PAFS].cuda()
+        hm_mask = label[:, TOTAL_PAFS:TOTAL_PAFS+TOTAL_HMS].cuda()
+        paf_truth = label[:, TOTAL_PAFS+TOTAL_HMS:TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS].cuda()
+        hm_truth = label[:, TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS:TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS+TOTAL_HMS].cuda()
+        imgs = data.cuda()
 
-    # Forward Model
-    pafs_pred, hms_pred = model.forward(imgs)
+        # Mask
+        paf_truth_m = torch.mul(paf_truth, paf_mask)
+        hm_truth_m = torch.mul(hm_truth, hm_mask)
 
-    # Multiply with Masks
-    loss = 0
-    for i in range(0, ITERATIONS):
-        paf_pred_m = torch.mul(pafs_pred[i], paf_mask)
-        hm_pred_m = torch.mul(hms_pred[i], hm_mask)
-        loss += mseLoss(paf_pred_m, paf_truth_m)
-        loss += mseLoss(hm_pred_m, hm_truth_m)
+        # Forward Model
+        pafs_pred, hms_pred = model.forward(imgs)
 
-    # Opt
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+        # Multiply with Masks
+        loss = 0
+        for i in range(0, ITERATIONS):
+            paf_pred_m = torch.mul(pafs_pred[i], paf_mask)
+            hm_pred_m = torch.mul(hms_pred[i], hm_mask)
+            loss += mseLoss(paf_pred_m, paf_truth_m)
+            loss += mseLoss(hm_pred_m, hm_truth_m)
 
-    # Save
-    if iterations % 2000 == 0 or exit:
-        print("Saving")
-        save_checkpoint({
-            'iterations': iterations,
-            'state_dict': model.state_dict(),
-        }, NAME)
-    if exit: sys.exit()
-    print((iterations,loss))
+        # Opt
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-    # # OP Test
-    # test_index = 0
-    # hm_final = hms_pred[ITERATIONS-1][test_index,:,:,:]
-    # paf_final = pafs_pred[ITERATIONS-1][test_index,:,:,:]
-    # poseHeatMaps = torch.cat([hm_final, paf_final], 0).detach().cpu().numpy().copy()
-    # imageToProcess = imgs.detach().cpu().numpy().copy()[test_index,:,:,:]
-    # imageToProcess = (cv2.merge([imageToProcess[0,:,:]+0.5, imageToProcess[1,:,:]+0.5, imageToProcess[2,:,:]+0.5])*255).astype(np.uint8)
-    # datum = op.Datum()
-    # datum.cvInputData = imageToProcess
-    # datum.poseNetOutput = poseHeatMaps
-    # opWrapper.emplaceAndPop([datum])
-    # print("Body keypoints: \n" + str(datum.poseKeypoints))
-    # cv2.imshow("OpenPose 1.4.0 - Tutorial Python API", datum.cvOutputData)
-    # cv2.waitKey(0)
+        # Save
+        if iterations % 2000 == 0 or exit:
+            print("Saving")
+            save_checkpoint({
+                'iterations': iterations,
+                'state_dict': model.state_dict(),
+            }, NAME)
+        if exit: sys.exit()
+        print((iterations,loss))
 
-    # img_viz = imgs.detach().cpu().numpy().copy()[0,0,:,:]
-    # hm_pred_viz = hms_pred[ITERATIONS-1].detach().cpu().numpy().copy()[0,0,:,:]
-    # hm_truth_viz = hm_truth_m.cpu().numpy().copy()[0,0,:,:]
-    # cv2.imshow("hm_pred_viz", cv2.resize(hm_pred_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
-    # cv2.imshow("hm_truth_viz", cv2.resize(hm_truth_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
-    # cv2.imshow("img", img_viz+0.5)
-    # cv2.waitKey(15)
+        # # OP Test
+        # test_index = 0
+        # hm_final = hms_pred[ITERATIONS-1][test_index,:,:,:]
+        # paf_final = pafs_pred[ITERATIONS-1][test_index,:,:,:]
+        # poseHeatMaps = torch.cat([hm_final, paf_final], 0).detach().cpu().numpy().copy()
+        # imageToProcess = imgs.detach().cpu().numpy().copy()[test_index,:,:,:]
+        # imageToProcess = (cv2.merge([imageToProcess[0,:,:]+0.5, imageToProcess[1,:,:]+0.5, imageToProcess[2,:,:]+0.5])*255).astype(np.uint8)
+        # datum = op.Datum()
+        # datum.cvInputData = imageToProcess
+        # datum.poseNetOutput = poseHeatMaps
+        # opWrapper.emplaceAndPop([datum])
+        # print("Body keypoints: \n" + str(datum.poseKeypoints))
+        # cv2.imshow("OpenPose 1.4.0 - Tutorial Python API", datum.cvOutputData)
+        # cv2.waitKey(0)
+
+        # img_viz = imgs.detach().cpu().numpy().copy()[0,0,:,:]
+        # hm_pred_viz = hms_pred[ITERATIONS-1].detach().cpu().numpy().copy()[0,0,:,:]
+        # hm_truth_viz = hm_truth_m.cpu().numpy().copy()[0,0,:,:]
+        # cv2.imshow("hm_pred_viz", cv2.resize(hm_pred_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
+        # cv2.imshow("hm_truth_viz", cv2.resize(hm_truth_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
+        # cv2.imshow("img", img_viz+0.5)
+        # cv2.waitKey(15)
 
 
 """
