@@ -32,7 +32,7 @@ from openpose import pyopenpose as op
 from models import *
 
 # DATA
-VAL_PATH = dir_path + "/val20172/*.jpg"
+VAL_PATH = dir_path + "/val2017/*.jpg"
 COCOSAVE_PATH = dir_path + "/coco_result.json"
 
 # Sample OP Network
@@ -47,8 +47,8 @@ opWrapper.configure(params)
 opWrapper.start()
 
 # Setup Model
-NAME = "weights"
-model = Model(Body25("3x3"), ngpu=int(1)).cuda()
+NAME = "weights_gines"
+model = Model(Gines(), ngpu=int(1)).cuda()
 model.eval()
 model.net.load_caffe()
 
@@ -60,22 +60,20 @@ image_files = natsort.natsorted(glob.glob(VAL_PATH))
 scale_factors = dict()
 for image_file in image_files:
     iterations += 1
-    #print(float(iterations)/float(len(image_files)))
+    print(float(iterations)/float(len(image_files)))
     true_name = (image_file.split("/")[-1]).split(".")[0]
     img = cv2.imread(image_file)
     rframe, imageForNet, scaleFactor = process_frame(img, 368)
     imageForNet = torch.tensor(np.expand_dims(imageForNet, axis=0)).cuda()
     scale_factors[int(true_name)] = scaleFactor
-    print(scaleFactor)
+    #print(scaleFactor)
 
     # Model
-    pafs_pred, hms_pred = model.forward(imageForNet)
+    paf_final, hm_final = model.forward(imageForNet)
 
     # OP Test
     test_index = 0
-    hm_final = hms_pred[ITERATIONS-1][test_index,:,:,:]
-    paf_final = pafs_pred[ITERATIONS-1][test_index,:,:,:]
-    poseHeatMaps = torch.cat([hm_final, paf_final], 0).detach().cpu().numpy().copy()
+    poseHeatMaps = torch.cat([hm_final, paf_final], 1).detach().cpu().numpy().copy()
     imageToProcess = imageForNet.detach().cpu().numpy().copy()[test_index,:,:,:]
     imageToProcess = (cv2.merge([imageToProcess[0,:,:]+0.5, imageToProcess[1,:,:]+0.5, imageToProcess[2,:,:]+0.5])*255).astype(np.uint8)
     datum = op.Datum()
@@ -83,8 +81,9 @@ for image_file in image_files:
     datum.cvInputData = imageToProcess
     datum.poseNetOutput = poseHeatMaps
     opWrapper.emplaceAndPop([datum])
-    #print(datum.poseKeypoints.shape)
-    #print("Body keypoints: \n" + str(datum.poseKeypoints))
+
+    # print(datum.poseKeypoints.shape)
+    # print("Body keypoints: \n" + str(datum.poseKeypoints))
     # cv2.imshow("OpenPose 1.4.0 - Tutorial Python API", datum.cvOutputData)
     # cv2.waitKey(0)
 

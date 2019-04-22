@@ -31,8 +31,19 @@ from openpose import pyopenpose as op
 
 from models import *
 
+
+# Parsers
+parser = argparse.ArgumentParser(description='OP')
+parser.add_argument('--ngpu', type=int, default=1,
+                    help='number of GPUs to use')
+parser.add_argument('--batch', type=int, default=10,
+                    help='batch size')
+parser.add_argument('--reload', action='store_true')
+args = parser.parse_args()
+
+
 # DATA
-VAL_PATH = dir_path + "/val20172/*.jpg"
+VAL_PATH = dir_path + "/val2017/*.jpg"
 COCOSAVE_PATH = dir_path + "/coco_result.json"
 
 # Sample OP Network
@@ -47,10 +58,19 @@ opWrapper.configure(params)
 opWrapper.start()
 
 # Setup Model
-NAME = "weights"
-model = Model(Body25("3x3"), ngpu=int(1)).cuda()
+NAME = "weights7x7"
+model = Model(Body25("7x7"), ngpu=int(1)).cuda()
 model.eval()
-model.net.load_caffe()
+
+# Load Weights
+iterations = 0
+reload = int(args.reload)
+if not reload:
+    state = load_checkpoint(NAME)
+    if state != None:
+        iterations = state["iterations"]
+        model.load_state_dict(state['state_dict'])
+        print("Loaded Iteration " + str(iterations))
 
 # Validation Location
 iterations = -1
@@ -60,13 +80,12 @@ image_files = natsort.natsorted(glob.glob(VAL_PATH))
 scale_factors = dict()
 for image_file in image_files:
     iterations += 1
-    #print(float(iterations)/float(len(image_files)))
+    print(float(iterations)/float(len(image_files)))
     true_name = (image_file.split("/")[-1]).split(".")[0]
     img = cv2.imread(image_file)
     rframe, imageForNet, scaleFactor = process_frame(img, 368)
     imageForNet = torch.tensor(np.expand_dims(imageForNet, axis=0)).cuda()
     scale_factors[int(true_name)] = scaleFactor
-    print(scaleFactor)
 
     # Model
     pafs_pred, hms_pred = model.forward(imageForNet)
@@ -85,15 +104,15 @@ for image_file in image_files:
     opWrapper.emplaceAndPop([datum])
     #print(datum.poseKeypoints.shape)
     #print("Body keypoints: \n" + str(datum.poseKeypoints))
-    # cv2.imshow("OpenPose 1.4.0 - Tutorial Python API", datum.cvOutputData)
-    # cv2.waitKey(0)
+    cv2.imshow("OpenPose 1.4.0 - Tutorial Python API", datum.cvOutputData)
+    cv2.waitKey(0)
 
 # Stop
 opWrapper.stop()
 del opWrapper
 
 # Load JSON
-json_result = load_json(COCOSAVE_PATH)
+json_result = load_json("coco_result.json")
 for item in json_result:
     sf = scale_factors[int(item["image_id"])]
     for i in range(0, len(item["keypoints"])):
@@ -101,29 +120,17 @@ for item in json_result:
             true_index = i-1
             item["keypoints"][true_index] /= sf
 
-with open(COCOSAVE_PATH, 'w') as fp:
+with open('coco_result.json', 'w') as fp:
     json.dump(json_result, fp)
 
- # Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets= 20 ] = 0.500
- # Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets= 20 ] = 0.734
- # Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets= 20 ] = 0.528
- # Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets= 20 ] = 0.435
- # Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets= 20 ] = 0.593
- # Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 20 ] = 0.550
- # Average Recall     (AR) @[ IoU=0.50      | area=   all | maxDets= 20 ] = 0.758
- # Average Recall     (AR) @[ IoU=0.75      | area=   all | maxDets= 20 ] = 0.579
- # Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets= 20 ] = 0.449
- # Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets= 20 ] = 0.691
 
-# In OP
-
- # Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets= 20 ] = 0.524
- # Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets= 20 ] = 0.764
- # Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets= 20 ] = 0.565
- # Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets= 20 ] = 0.452
- # Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets= 20 ] = 0.624
- # Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 20 ] = 0.575
- # Average Recall     (AR) @[ IoU=0.50      | area=   all | maxDets= 20 ] = 0.786
- # Average Recall     (AR) @[ IoU=0.75      | area=   all | maxDets= 20 ] = 0.611
- # Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets= 20 ] = 0.467
- # Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets= 20 ] = 0.726
+ # Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets= 20 ] = 0.389
+ # Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets= 20 ] = 0.649
+ # Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets= 20 ] = 0.389
+ # Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets= 20 ] = 0.324
+ # Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets= 20 ] = 0.478
+ # Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 20 ] = 0.441
+ # Average Recall     (AR) @[ IoU=0.50      | area=   all | maxDets= 20 ] = 0.673
+ # Average Recall     (AR) @[ IoU=0.75      | area=   all | maxDets= 20 ] = 0.447
+ # Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets= 20 ] = 0.344
+ # Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets= 20 ] = 0.576

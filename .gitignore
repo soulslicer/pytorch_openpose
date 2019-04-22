@@ -1,2 +1,8 @@
 *.pth
 *.pyc
+*.json
+*.pkl
+val2017
+annotations
+coco_result.json
+cocoapi-master
