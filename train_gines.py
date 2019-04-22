@@ -102,7 +102,7 @@ WORKER_SIZE = int(args.ngpu)
 BATCH_SIZE = int(args.batch)
 kwargs = {'num_workers': WORKER_SIZE, 'pin_memory': True}
 train_loader = torch.utils.data.DataLoader(
-    OPLoader(WORKER_SIZE, BATCH_SIZE),
+    OPLoader(WORKER_SIZE, BATCH_SIZE, 480),
     batch_size=WORKER_SIZE, shuffle=False, **kwargs)
 
 # Loss

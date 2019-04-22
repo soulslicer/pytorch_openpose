@@ -17,7 +17,7 @@ mutex = Lock()
 
 
 class OPLoader(torch.utils.data.Dataset):
-    def __init__(self, WORKER_SIZE, BATCH_SIZE):
+    def __init__(self, WORKER_SIZE, BATCH_SIZE, CROP_SIZE=368):
         self.WORKER_SIZE = WORKER_SIZE
         self.BATCH_SIZE = BATCH_SIZE
         if BATCH_SIZE % WORKER_SIZE != 0:
@@ -30,8 +30,8 @@ class OPLoader(torch.utils.data.Dataset):
                 "batch_size" : self.BATCH_SIZE/self.WORKER_SIZE,
                 "stride": 8,
                 "max_degree_rotations": "45.0",
-                "crop_size_x": 368,
-                "crop_size_y": 368,
+                "crop_size_x": CROP_SIZE,
+                "crop_size_y": CROP_SIZE,
                 "center_perterb_max": 40.0,
                 "center_swap_prob": 0.0,
                 "scale_prob": 1.0,
