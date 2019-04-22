@@ -513,4 +513,4 @@ class Gines(nn.Module):
         pafC = self.pafC(torch.cat([vgg_out, pafB], 1))
         hm = self.hmNetwork(torch.cat([vgg_out, pafC], 1))
 
-        return pafC, hm
+        return pafA, pafB, pafC, hm

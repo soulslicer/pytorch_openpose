@@ -69,7 +69,7 @@ for image_file in image_files:
     #print(scaleFactor)
 
     # Model
-    paf_final, hm_final = model.forward(imageForNet)
+    pafA, pafB, paf_final, hm_final = model.forward(imageForNet)
 
     # OP Test
     test_index = 0

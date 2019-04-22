@@ -111,8 +111,8 @@ parameters = [
         {"params": model.net.vgg19.parameters(), "lr": lr*1},
         {"params": model.net.pafA.parameters(), "lr": lr*4},
         {"params": model.net.pafB.parameters(), "lr": lr*4},
-        {"params": model.net.hmA.parameters(), "lr": lr*4},
-        {"params": model.net.hmB.parameters(), "lr": lr*4},
+        {"params": model.net.pafC.parameters(), "lr": lr*4},
+        {"params": model.net.hmNetwork.parameters(), "lr": lr*4},
     ]
 mseLoss = torch.nn.MSELoss()
 optimizer = optim.Adam(parameters, lr=lr, betas=(0.9, 0.999))
@@ -152,15 +152,14 @@ while 1:
         hm_truth_m = torch.mul(hm_truth, hm_mask)
 
         # Forward Model
-        pafs_pred, hms_pred = model.forward(imgs)
+        pafA, pafB, pafC, hm = model.forward(imgs)
 
-        # Multiply with Masks
+        # Opt
         loss = 0
-        for i in range(0, ITERATIONS):
-            paf_pred_m = torch.mul(pafs_pred[i], paf_mask)
-            hm_pred_m = torch.mul(hms_pred[i], hm_mask)
-            loss += mseLoss(paf_pred_m, paf_truth_m)
-            loss += mseLoss(hm_pred_m, hm_truth_m)
+        loss += mseLoss(torch.mul(pafA, paf_mask), paf_truth_m)
+        loss += mseLoss(torch.mul(pafB, paf_mask), paf_truth_m)
+        loss += mseLoss(torch.mul(pafC, paf_mask), paf_truth_m)
+        loss += mseLoss(torch.mul(hm, hm_mask), hm_truth_m)
 
         # Opt
         optimizer.zero_grad()
