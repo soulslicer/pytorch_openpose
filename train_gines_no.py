@@ -127,8 +127,8 @@ while 1:
     iterations += 1
     batch = opcaffe.Batch()
     myClass.load(batch)
-    data = batch.data
-    label = batch.label
+    data = torch.tensor(batch.data)
+    label = torch.tensor(batch.label)
 
     # LR
     if iterations in lr_half_sets:
