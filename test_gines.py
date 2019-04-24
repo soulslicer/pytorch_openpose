@@ -35,6 +35,13 @@ from models import *
 VAL_PATH = dir_path + "/val2017/*.jpg"
 COCOSAVE_PATH = dir_path + "/coco_result.json"
 
+# Parsers
+parser = argparse.ArgumentParser(description='OP')
+parser.add_argument('--weight', type=str, default="",
+                    help='Weight')
+args = parser.parse_args()
+
+
 # Sample OP Network
 params = dict()
 params["model_folder"] = "/home/raaj/openpose_orig/models/"
@@ -50,7 +57,17 @@ opWrapper.start()
 NAME = "weights_gines"
 model = Model(Gines(), ngpu=int(1)).cuda()
 model.eval()
-model.net.load_caffe()
+
+# Load weights
+if len(args.weight):
+    state = torch.load(args.weight)
+    if state != None:
+        model.load_state_dict(state['state_dict'])
+        print("Loaded State")
+else:
+    model.net.load_caffe()
+
+# model.net.load_caffe()
 
 # Validation Location
 iterations = -1
@@ -60,7 +77,7 @@ image_files = natsort.natsorted(glob.glob(VAL_PATH))
 scale_factors = dict()
 for image_file in image_files:
     iterations += 1
-    print(float(iterations)/float(len(image_files)))
+    #print(float(iterations)/float(len(image_files)))
     true_name = (image_file.split("/")[-1]).split(".")[0]
     img = cv2.imread(image_file)
     rframe, imageForNet, scaleFactor = process_frame(img, 368)

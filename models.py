@@ -257,7 +257,7 @@ class Body25(nn.Module):
         # Apply Xavier Init
         def init_weights(m):
             if type(m) == nn.Conv2d:
-                torch.nn.init.xavier_uniform(m.weight)
+                torch.nn.init.xavier_uniform_(m.weight)
                 m.bias.data.fill_(0.01)
         self.pafA.apply(init_weights)
         self.hmA.apply(init_weights)
@@ -423,7 +423,7 @@ class Gines(nn.Module):
         # Apply Xavier Init
         def init_weights(m):
             if type(m) == nn.Conv2d:
-                torch.nn.init.xavier_uniform(m.weight)
+                torch.nn.init.xavier_uniform_(m.weight)
                 m.bias.data.fill_(0.01)
         self.pafA.apply(init_weights)
         self.pafB.apply(init_weights)

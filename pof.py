@@ -57,9 +57,7 @@ pof_b = [1,2,3,4,   5,6,   7,8,   9,10,   11,12,   13,14,   15,16,   19,20,21,  
 
 
 def convert(points):
-    new_points = np.zeros((25,3))
-
-
+    new_points = np.zeros((17,3))
 
     for i in range(0, new_points.shape[0]):
 
@@ -68,10 +66,6 @@ def convert(points):
         except:
             new_points[i, :] = np.array([50000,50000,0.0001])
 
-        # if i in dome_to_body25b.keys():
-        #     new_points[i, :] = points[dome_to_body25b[i], :]
-        # else:
-        #     new_points[i, :] = np.array([0,0,-1])
     return new_points
 
 class DomeReader():
@@ -425,17 +419,124 @@ def project2D(joints, calib, imgwh=None, applyDistort=True):
     stop
 
 
+def get_rect(points):
+    minx = 1000000
+    miny = 1000000
+    maxx = 0
+    maxy = 0
+    for point in points:
+        if point[2] == 2: continue
+        if point[0] < minx:
+            minx = point[0]
+        if point[1] < miny:
+            miny = point[1]
+        if point[0] > maxx:
+            maxx = point[0]
+        if point[1] > maxy:
+            maxy = point[1]
+    return [int(minx), int(miny), int(maxx), int(maxy)]
+
+
+###########################
+
+
+import sys
+sys.path.insert(0, "/home/raaj/openpose_caffe_train/build/op/")
+import opcaffe
+params = {
+    "batch_size" : 10,
+    "stride": 8,
+    "max_degree_rotations": "0.0", # !! WE DONT HANDLE POF ROTATIONS
+    "crop_size_x": 368,
+    "crop_size_y": 368,
+    "center_perterb_max": 40.0,
+    "center_swap_prob": 0.0,
+    "scale_prob": 1.0,
+    "scale_mins": "0.333333333333",
+    "scale_maxs": "1.5",
+    "target_dist": 0.600000023842,
+    "number_max_occlusions": "2",
+    "sigmas": "7.0",
+    "model": "COCO_25B_17",
+    "source_background": "/media/raaj/Storage/openpose_train/dataset/lmdb_background",
+}
+opTransformer = opcaffe.OPTransformer(params)
+
+            #{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10},{11},{12},{13},{14},{15},{16},{},{},{},{},{},{},{},{}
+
+def create_meta(points_3d, points_2d, img):
+    metaData = opcaffe.MetaData()
+
+    # 2D Joints
+    opjoints = opcaffe.Joints()
+    oppoints = []
+    oppoints3D = []
+    opviz = []
+    for j in range(0, points_2d.shape[0]):
+        point = opcaffe.Point2f(int(points_2d[j,0]),int(points_2d[j,1]))
+        point3D = opcaffe.Point3f(points_3d[j,0], points_3d[j,1], points_3d[j,2])
+        oppoints.append(point)
+        oppoints3D.append(point3D)
+        opviz.append(int(points_2d[j,2]))
+    opjoints.points = oppoints
+    opjoints.points3D = oppoints3D
+    opjoints.isVisible = opviz
+    metaData.jointsSelf = opjoints
+
+    # Bbox
+    rect = get_rect(points_2d)
+    centroid = [rect[0] + (rect[2]-rect[0])/2, rect[1] + (rect[3]-rect[1])/2]
+    metaData.objPos.x = centroid[0]
+    metaData.objPos.y = centroid[1]
+
+    # Size
+    metaData.imageSize = opcaffe.Size(img.shape[1],img.shape[0])
+    metaData.numberOtherPeople = 0
+    metaData.scaleSelf = 1
+
+    return metaData
+
+def viz_pof(batch):
+    for j in range(0, 24):
+        image = batch.data[0,0,:,:]+0.5
+        image = (image*255).astype(np.uint8)
+        image = cv2.cvtColor(image,cv2.COLOR_GRAY2BGR)
+
+        index = j
+
+        pof_x = cv2.resize(batch.other[0,3*index + 0,:,:].copy(), (368, 368), 0, 0, interpolation = cv2.INTER_CUBIC)
+        pof_y = cv2.resize(batch.other[0,3*index + 1,:,:].copy(), (368, 368), 0, 0, interpolation = cv2.INTER_CUBIC)
+        pof_z = cv2.resize(batch.other[0,3*index + 2,:,:].copy(), (368, 368), 0, 0, interpolation = cv2.INTER_CUBIC)
+
+        scalar = 10
+        for v in range(0, image.shape[0], 10):
+            for u in range(0, image.shape[1], 10):
+                if not pof_x[v,u] and not pof_y[v,u]: continue
+                p1 = (u, v)
+                p2 = (u + scalar*pof_x[v,u], v + scalar*pof_y[v,u])
+
+                print(pof_z[v,u])
+
+                cv2.line(image, (int(p1[0]), int(p1[1])), (int(p2[0]), int(p2[1])), (0,255,0), 1)
+
+        # print(pof.dtype)
+
+        # image = image + pof
+
+        cv2.imshow("win", image)
+        cv2.waitKey(0)
+
 if __name__ == '__main__':
     #d = DomeReader(mode='training', shuffle=True, objtype=0, crop_noise=True, full_only=False)
 
     db_data = pickle.load(open("human3d.pkl", 'rb'))
 
 
-    print(len(db_data["body"])) # 244 3D Keypoints
+    # print(len(db_data["body"])) # 244 3D Keypoints
 
-    print(len(db_data["K"])) # 244 Timestamp calibreations
+    # print(len(db_data["K"])) # 244 Timestamp calibreations
 
-    print(len(db_data["img_dirs"])) # 244 Image Datas
+    # print(len(db_data["img_dirs"])) # 244 Image Datas
 
     for i in range(0, len(db_data["body"])):
         img = cv2.imread(db_data["img_dirs"][i])
@@ -446,15 +547,15 @@ if __name__ == '__main__':
         calib = {"K": K, "R": R, "t": t, "distCoef": distCoef}
         joints = db_data["body"][i]
 
-        # Convert to Body 25
+        # Convert to COCO Format
         joints = convert(joints) 
 
         # Project
         pt = project2D(joints, calib, imgwh=(img.shape[1], img.shape[0]), applyDistort=True)
 
         # Create elems
-        points_3d = np.zeros((25,3))
-        points_2d = np.zeros((25,3))
+        points_3d = np.zeros((17,3))
+        points_2d = np.zeros((17,3))
         for j in range(0, joints.shape[0]):
             point_2d = pt[0][:,j]
             valid = pt[1][j]
@@ -464,17 +565,35 @@ if __name__ == '__main__':
                 points_2d[j,:] = np.array([point_2d[0], point_2d[1], 1])
             else:
                 points_3d[j,:] = np.array([0,0,0])
-                points_2d[j,:] = np.array([0,0,0])
+                points_2d[j,:] = np.array([0,0,2])
 
 
-        
+        # Stuff
+
+        batch = opcaffe.Batch()
+        metaData = create_meta(points_3d, points_2d, img)
+        opTransformer.load(img, metaData, batch)
+        viz_pof(batch)
+
+        I CAN ALREADY TEST IF I CAN GEN 3D KEYPOINTS
 
         # Vis 2D
         for j in range(0, joints.shape[0]):
-            if points_2d[j,2] == 0: continue
+            if points_2d[j,2] == 2: continue
             point_2d = points_2d[j,:]
             cv2.putText(img,str(j), (int(point_2d[0]), int(point_2d[1])), cv2.FONT_HERSHEY_SIMPLEX, 1, 255)
             cv2.circle(img,(int(point_2d[0]), int(point_2d[1])), 5, (0,255,0), -1)
+
+        """
+        1. I need to find bounding box of person and centroid
+        2. I need to crop to 368x368 while keeping person inside (Handle translation too) -> Save this translation
+        3. I need to 
+        
+
+        """
+
+#         2 = unlabeled, 0-1 are treated the same way (so either value would work), but i do not remember which one was each
+# if you say 0 means occluded in the image, then you want 1 by default (if annotated)
 
         # Create POF
 
@@ -483,8 +602,8 @@ if __name__ == '__main__':
         #     p1 = points_2d[]
 
 
-        cv2.imshow("win", img)
-        cv2.waitKey(0)
+        # cv2.imshow("win", img)
+        # cv2.waitKey(0)
 
         #stop
 
