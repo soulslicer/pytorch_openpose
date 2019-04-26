@@ -66,6 +66,7 @@ def process_frame(frame, boxsize):
 
 TOTAL_FM = 128
 TOTAL_PAFS = 72
+TOTAL_POFS = 24*3
 TOTAL_HMS = 25
 ITERATIONS = 5
 
@@ -363,7 +364,7 @@ class Model(nn.Module):
 
         self.net = model
 
-    def forward(self, input):
+    def forward(self, input, mode=False):
         batch_size = input.size(0)
         if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
             output = nn.parallel.data_parallel(self.net, input, range(self.ngpu))
@@ -374,8 +375,9 @@ class Model(nn.Module):
 
 class Gines(nn.Module):
 
-    def __init__(self, mode="3x3"):
+    def __init__(self, pof=False):
         super(Gines, self).__init__()
+        self.pof = pof
 
         # Input Channel, Channel, Kernel Size, Stride, Padding
         self.vgg19 = nn.Sequential(OrderedDict([
@@ -417,6 +419,11 @@ class Gines(nn.Module):
         self.pafC = ABlock3x3_Extended(TOTAL_FM + TOTAL_PAFS, TOTAL_PAFS, Depth=256, SubDepth=512)
         self.hmNetwork = ABlock3x3_Extended(TOTAL_FM + TOTAL_PAFS, TOTAL_HMS, Depth=192, SubDepth=512)
 
+        # POF Networks
+        if self.pof:
+            self.pofA = ABlock3x3_Extended(TOTAL_FM + TOTAL_PAFS, TOTAL_POFS, Depth=128, SubDepth=256)
+            self.pofB = ABlock3x3_Extended(TOTAL_FM + TOTAL_PAFS + TOTAL_POFS, TOTAL_POFS, Depth=256, SubDepth=512)
+
         self.load_vgg()
 
     def load_vgg(self):
@@ -429,6 +436,9 @@ class Gines(nn.Module):
         self.pafB.apply(init_weights)
         self.pafC.apply(init_weights)
         self.hmNetwork.apply(init_weights)
+        if self.pof:
+            self.pofA.apply(init_weights)
+            self.pofB.apply(init_weights)            
 
         # Load VGG19
         vgg19_model_url = 'https://download.pytorch.org/models/vgg19-dcbb9e9d.pth'
@@ -513,4 +523,13 @@ class Gines(nn.Module):
         pafC = self.pafC(torch.cat([vgg_out, pafB], 1))
         hm = self.hmNetwork(torch.cat([vgg_out, pafC], 1))
 
-        return pafA, pafB, pafC, hm
+        if self.pof:
+
+            pofA = self.pofA(torch.cat([vgg_out, pafC], 1))
+            pofB = self.pofB(torch.cat([vgg_out, pafC, pofA], 1))
+
+            return pafA, pafB, pafC, hm, pofA, pofB
+
+        else:
+
+            return pafA, pafB, pafC, hm
