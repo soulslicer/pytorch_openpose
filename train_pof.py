@@ -99,7 +99,7 @@ params = {
 myClass = opcaffe.OPCaffe(params)
 
 # POF
-pofBodyLoader = pof.POFBodyLoader(db_filename="human3d.pkl", resolution=368)
+pofBodyLoader = pof.POFBodyLoader(db_filename="human3d.pkl", batch_size=int(args.batch), resolution=368)
 
 # # Caffe Loader
 # WORKER_SIZE = int(args.ngpu)
@@ -142,6 +142,36 @@ def train_section(optimizer, keyname, mode):
                 param_group['lr'] = 0.
             #print((keyname) + " " + str(param_group['lr'])) 
 
+###############################
+
+from torch.multiprocessing import Process, Queue, cpu_count
+
+def work_op(loader, queue_op):
+    while 1:
+        if queue_op.qsize() < 5:
+            batch = opcaffe.Batch()
+            myClass.load(batch)
+            data = torch.tensor(batch.data)
+            label = torch.tensor(batch.label)
+            queue_op.put([data, label])
+        time.sleep(0.1)
+
+queue_op = Queue()
+process_op = Process(target=work_op, args=(myClass, queue_op))
+process_op.start()
+
+def work_pof(loader, queue_pof):
+    while 1:
+        if queue_pof.qsize() < 5:
+            queue_pof.put(pofBodyLoader.get())
+        time.sleep(0.1)
+
+queue_pof = Queue()
+process_pof = Process(target=work_pof, args=(pofBodyLoader, queue_pof))
+process_pof.start()
+
+###############################
+
 # Iterate
 while 1:
     iterations += 1
@@ -158,13 +188,13 @@ while 1:
     if pof_mode:
 
         # EnableDisable
-        #print("POF")
+        print("POF")
         train_section(optimizer, "hmNetwork", False)
         train_section(optimizer, "pofA", True)
         train_section(optimizer, "pofB", True)
 
         # Get Data
-        images, paf_masks, pafs, pof_masks, pofs = pofBodyLoader.get(int(args.batch))
+        images, paf_masks, pafs, pof_masks, pofs = queue_pof.get()
 
         # Convert Torch
         imgs = torch.tensor(images).cuda()
@@ -192,16 +222,13 @@ while 1:
     else:
 
         # EnableDisable
-        #print("Normal")
+        print("Normal")
         train_section(optimizer, "hmNetwork", True)
         train_section(optimizer, "pofA", False)
         train_section(optimizer, "pofB", False)
 
         # Load OP Data
-        batch = opcaffe.Batch()
-        myClass.load(batch)
-        data = torch.tensor(batch.data)
-        label = torch.tensor(batch.label)
+        data, label = queue_op.get()
 
         # Split
         paf_mask = label[:, 0:TOTAL_PAFS].cuda()
@@ -236,7 +263,10 @@ while 1:
             'iterations': iterations,
             'state_dict': model.state_dict(),
         }, NAME)
-    if exit: sys.exit()
+    if exit: 
+        print("Done")
+        del model
+        sys.exit()
     print((iterations,loss))
 
     # Re-enable back all

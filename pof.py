@@ -523,7 +523,8 @@ def viz_pof(img, pof, paf):
         cv2.waitKey(0)
 
 class POFBodyLoader():
-    def __init__(self, db_filename, resolution=368):
+    def __init__(self, db_filename, batch_size, resolution=368):
+        self.batch_size = batch_size
         params = {
             "batch_size" : 10,
             "stride": 8,
@@ -597,13 +598,13 @@ class POFBodyLoader():
 
         return image, paf_mask, paf, pof_mask, pof
 
-    def get(self, batch_size):
+    def get(self):
 
         # Get N
         N = len(self.db_data["body"])
 
         # Sample Batch size from X_train
-        indexes = np.random.choice(N, batch_size)
+        indexes = np.random.choice(N, self.batch_size)
 
         # Add back
         images = []
@@ -627,7 +628,7 @@ class POFBodyLoader():
         #print("ASK WHY THIS IS DRAWN SO WEIRDLY??")
 
         # # Viz
-        # for i in range(0, batch_size):
+        # for i in range(0, self.batch_size):
         #     print(i)
         #     viz_pof(images[i,:,:,:], pofs[i,:,:,:], pafs[i,:,:,:])
 
