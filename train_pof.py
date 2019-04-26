@@ -99,7 +99,7 @@ params = {
 myClass = opcaffe.OPCaffe(params)
 
 # POF
-pofBodyLoader = pof.POFBodyLoader(db_filename="human3d_test.pkl", resolution=368)
+pofBodyLoader = pof.POFBodyLoader(db_filename="human3d.pkl", resolution=368)
 
 # # Caffe Loader
 # WORKER_SIZE = int(args.ngpu)
