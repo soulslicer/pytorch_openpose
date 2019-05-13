@@ -52,8 +52,6 @@ dome_to_body25b[15] = 8
 dome_to_body25b[16] = 14
 
 
-pof_a = [0,0,1,2,   0,0,   5,6,   7, 8,    5, 6,   11,12,   13,14,   15,19,15,  16,22,16,    5, 5]
-pof_b = [1,2,3,4,   5,6,   7,8,   9,10,   11,12,   13,14,   15,16,   19,20,21,  22,23,24,   17,18]
 
 
 def convert(points):
@@ -434,6 +432,48 @@ def get_rect(points):
             maxy = point[1]
     return [int(minx), int(miny), int(maxx), int(maxy)]
 
+def getL2Dist(a, b):
+    return np.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2)
+
+def getVector(a,b, norm = True):
+    if norm == False:
+        return (b[0]-a[0], b[1]-a[1])
+    else:
+        vec = (b[0]-a[0], b[1]-a[1])
+        n = np.sqrt(vec[0]**2 + vec[1]**2)
+        vec = (vec[0]/n, vec[1]/n)
+        return vec
+
+def normalize(a):
+    mag = np.sqrt(a[0]**2 + a[1]**2)
+    return (a[0]/mag, a[1]/mag)
+
+def dotProd(a,b, normalize = True):
+    normalDot = a[0]*b[0] + a[1]*b[1]
+    if not normalize:
+        return normalDot
+    aMag = np.sqrt(a[0]**2 + a[1]**2)
+    bMag = np.sqrt(b[0]**2 + b[1]**2)
+    return normalDot/(aMag*bMag)
+
+def samplePoints(A, B, sample_dist = 20, sample_min = 5):
+    l2Dist = getL2Dist(A,B)
+    vec_nonorm = getVector(A, B, False)
+    sample_points = []
+    prev_sp = None
+    if l2Dist == 0:
+        sample_points.append([A[0],A[1]])
+        return sample_points
+    for k in np.arange(0.0, l2Dist, l2Dist/sample_dist):
+        sample_point = [0,0]
+        sample_point[0] = A[0] + (k/l2Dist)*vec_nonorm[0]
+        sample_point[1] = A[1] + (k/l2Dist)*vec_nonorm[1]
+        if prev_sp is not None:
+            if getL2Dist(prev_sp, sample_point) < 5: continue 
+        prev_sp = sample_point
+        sample_points.append(sample_point)
+    sample_points.append([B[0],B[1]])
+    return sample_points
 
 ###########################
 
@@ -474,7 +514,29 @@ def create_meta(points_3d, points_2d, img):
 
     return metaData
 
+def viz_hm(img, hm):
+    for j in range(0, 25):
+        image = img[0,:,:]+0.5
+        #image = (image*255).astype(np.uint8)
+        image_orig = cv2.cvtColor(image,cv2.COLOR_GRAY2BGR)
+
+        image = image_orig.copy()
+
+        index = j
+
+        hmrs = cv2.resize(hm[index,:,:].copy(), (368, 368), 0, 0, interpolation = cv2.INTER_CUBIC)
+
+        image[:,:,0] += (np.abs(hmrs))
+        image[:,:,1] += (np.abs(hmrs))
+        image[:,:,2] += (np.abs(hmrs))
+
+        cv2.imshow("HM", image)        
+
+        cv2.waitKey(0)
+
 def viz_pof(img, pof, paf):
+    full_img = cv2.cvtColor(img[0,:,:]+0.5,cv2.COLOR_GRAY2BGR)
+
     for j in range(0, 24):
         image = img[0,:,:]+0.5
         #image = (image*255).astype(np.uint8)
@@ -488,8 +550,9 @@ def viz_pof(img, pof, paf):
         pof_y = cv2.resize(pof[3*index + 1,:,:].copy(), (368, 368), 0, 0, interpolation = cv2.INTER_CUBIC)
         pof_z = cv2.resize(pof[3*index + 2,:,:].copy(), (368, 368), 0, 0, interpolation = cv2.INTER_CUBIC)
 
-        paf_x = cv2.resize(paf[2*index + 0,:,:].copy(), (368, 368), 0, 0, interpolation = cv2.INTER_CUBIC)
-        paf_y = cv2.resize(paf[2*index + 1,:,:].copy(), (368, 368), 0, 0, interpolation = cv2.INTER_CUBIC)
+        if paf is not None:
+            paf_x = cv2.resize(paf[2*index + 0,:,:].copy(), (368, 368), 0, 0, interpolation = cv2.INTER_CUBIC)
+            paf_y = cv2.resize(paf[2*index + 1,:,:].copy(), (368, 368), 0, 0, interpolation = cv2.INTER_CUBIC)
 
         scalar = 10
         for v in range(0, image.shape[0], 10):
@@ -498,29 +561,38 @@ def viz_pof(img, pof, paf):
                 p1 = (u, v)
                 p2 = (u + scalar*pof_x[v,u], v + scalar*pof_y[v,u])
                 cv2.line(image, (int(p1[0]), int(p1[1])), (int(p2[0]), int(p2[1])), (0,255,0), 1)
+                cv2.line(full_img, (int(p1[0]), int(p1[1])), (int(p2[0]), int(p2[1])), (0,255,0), 1)
 
         image[:,:,0] += (np.abs(pof_x))
         image[:,:,1] += (np.abs(pof_y))
         image[:,:,2] += (np.abs(pof_z))
 
+        full_img[:,:,0] += (np.abs(pof_x))
+        full_img[:,:,1] += (np.abs(pof_y))
+        full_img[:,:,2] += (np.abs(pof_z))
+
         cv2.imshow("POF", image)
 
-        image = image_orig.copy()
+        if paf is not None:
+            image = image_orig.copy()
 
-        scalar = 10
-        for v in range(0, image.shape[0], 10):
-            for u in range(0, image.shape[1], 10):
-                if not paf_x[v,u] and not paf_y[v,u]: continue
-                p1 = (u, v)
-                p2 = (u + scalar*paf_x[v,u], v + scalar*paf_y[v,u])
-                cv2.line(image, (int(p1[0]), int(p1[1])), (int(p2[0]), int(p2[1])), (0,255,0), 1)
+            scalar = 10
+            for v in range(0, image.shape[0], 10):
+                for u in range(0, image.shape[1], 10):
+                    if not paf_x[v,u] and not paf_y[v,u]: continue
+                    p1 = (u, v)
+                    p2 = (u + scalar*paf_x[v,u], v + scalar*paf_y[v,u])
+                    cv2.line(image, (int(p1[0]), int(p1[1])), (int(p2[0]), int(p2[1])), (0,255,0), 1)
 
-        image[:,:,0] += (np.abs(paf_x))
-        image[:,:,1] += (np.abs(paf_y))
+            image[:,:,0] += (np.abs(paf_x))
+            image[:,:,1] += (np.abs(paf_y))
 
-        cv2.imshow("PAF", image)        
+            cv2.imshow("PAF", image)        
 
         cv2.waitKey(0)
+
+    cv2.imshow("full", full_img)
+    cv2.waitKey(0)
 
 class POFBodyLoader():
     def __init__(self, db_filename, batch_size, resolution=368):
@@ -586,7 +658,9 @@ class POFBodyLoader():
         # Return
         image = batch.data.copy()
         paf_mask = batch.label[:, 0:72, :, :].copy()
+        hm_mask = batch.label[:, 72:97, :, :].copy()
         paf = batch.label[:, 97:169, :, :].copy()
+        hm = batch.label[:, 169:194, :, :].copy()
         pof_mask = np.zeros((1,24*3,46,46), dtype=np.float32)
         counter = 0
         for j in range(0, 24*2, 2):
@@ -596,7 +670,7 @@ class POFBodyLoader():
             counter+=1
         pof = batch.other.copy()
 
-        return image, paf_mask, paf, pof_mask, pof
+        return image, paf_mask, paf, pof_mask, pof, hm_mask, hm
 
     def get(self):
 
@@ -606,134 +680,244 @@ class POFBodyLoader():
         # Sample Batch size from X_train
         indexes = np.random.choice(N, self.batch_size)
 
+        # print("HACCCK!")
+        # indexes[0] = 93
+
         # Add back
         images = []
         paf_masks = []
         pafs = []
         pof_masks = []
         pofs = []
+        hm_masks = []
+        hms = []
         for i in range(0, indexes.shape[0]):
-            image, paf_mask, paf, pof_mask, pof = self.get_index(indexes[i])
+            image, paf_mask, paf, pof_mask, pof, hm_mask, hm = self.get_index(indexes[i])
             images.append(image)
             paf_masks.append(paf_mask)
             pafs.append(paf)
             pof_masks.append(pof_mask)
             pofs.append(pof)
+            hm_masks.append(hm_mask)
+            hms.append(hm)
         images = np.concatenate(images, axis=0)
         paf_masks = np.concatenate(paf_masks, axis=0)
         pafs = np.concatenate(pafs, axis=0)
         pof_masks = np.concatenate(pof_masks, axis=0)
         pofs = np.concatenate(pofs, axis=0)
+        hm_masks = np.concatenate(hm_masks, axis=0)
+        hms = np.concatenate(hms, axis=0)
 
-        #print("ASK WHY THIS IS DRAWN SO WEIRDLY??")
 
-        # # Viz
-        # for i in range(0, self.batch_size):
-        #     print(i)
-        #     viz_pof(images[i,:,:,:], pofs[i,:,:,:], pafs[i,:,:,:])
 
-        return images, paf_masks, pafs, pof_masks, pofs
+        return images, paf_masks, pafs, pof_masks, pofs, hm_masks, hms
 
+# PAF_type = 0
+# allPAFConnection = [[np.array([[1, 8], [8, 9], [9, 10], [1, 11], [11, 12], [12, 13], [1, 2], [2, 3], [3, 4], [2, 16], [1, 5], [5, 6], [6, 7], [5, 17], [1, 0], [0, 14], [0, 15], [14, 16], [15, 17], [1, 18], [1, 19], [19, 8], [19, 11]]),
+#                      np.array([[0, 4], [4, 3], [3, 2], [2, 1], [0, 8], [8, 7], [7, 6], [6, 5], [0, 12], [12, 11], [11, 10], [10, 9], [0, 16], [16, 15], [15, 14], [14, 13], [0, 20], [20, 19], [19, 18], [18, 17]])
+#                      ],  # PAF type 0 (Original Openpose)
+#                     [np.array([[1, 8], [8, 9], [9, 10], [1, 11], [11, 12], [12, 13], [1, 2], [2, 3], [3, 4], [2, 16], [1, 5], [5, 6], [6, 7], [5, 17],
+#                                [1, 0], [0, 14], [0, 15], [14, 16], [15, 17], [1, 18], [2, 4], [5, 7], [8, 4], [11, 7], [8, 10], [11, 13]]),  # augmented PAF
+#                      np.array([[0, 4], [4, 3], [3, 2], [2, 1], [0, 8], [8, 7], [7, 6], [6, 5], [0, 12], [12, 11], [11, 10], [10, 9], [0, 16], [16, 15], [15, 14], [14, 13], [0, 20], [20, 19], [19, 18], [18, 17]])
+#                      ]]  # PAF type 1 (My augmented PAF)
+# PAFConnection = allPAFConnection[PAF_type]
+
+pof_a = [0,0,1,2,   0,0,   5,6,   7, 8,    5, 6,   11,12,   13,14,   15,19,15,  16,22,16,    5, 5]
+pof_b = [1,2,3,4,   5,6,   7,8,   9,10,   11,12,   13,14,   15,16,   19,20,21,  22,23,24,   17,18]
+
+def PAF_to_3D(coord2d, PAF, stride, objtype=0):
+
+    print(PAF.shape)
+
+    # Resize POF
+    PAF_resized = np.zeros((PAF.shape[0], PAF.shape[1]*stride, PAF.shape[2]*stride), dtype=PAF.dtype)
+    for j in range(0, PAF.shape[0]):
+        PAF_resized[j,:,:] = cv2.resize(PAF[j,:,:], (PAF_resized.shape[2], PAF_resized.shape[1]), 0, 0, interpolation = cv2.INTER_CUBIC)
+    PAF = PAF_resized
+
+    # if objtype == 0:
+    #     depth_root_idx = 1  # put neck at 0-depth
+    # else:
+    #     assert objtype == 1
+    #     depth_root_idx = 0
+    # assert len(coord2d.shape) == 2 and coord2d.shape[1] == 2
+    coord3d = np.zeros((coord2d.shape[0], 3), dtype=coord2d.dtype)
+
+    depth_root_idx = pof_b[0]
+
+    coord3d[:, :2] = coord2d[:, :2]
+    coord3d[depth_root_idx, 2] = 0.0
+    vec3d_array = []
+
+
+    for j in range(0, len(pof_a)):
+        conn = (pof_a[j], pof_b[j])
+
+        A = coord2d[conn[0]][0:3]
+        B = coord2d[conn[1]][0:3]
+        u = np.linspace(0.0, 1.0, num=11)
+        v = 1.0 - u
+
+        if A[2] < 0.05 or B[2] < 0.05: continue 
+
+        points = (np.outer(A, v) + np.outer(B, u)).astype(int)  # 2 * N
+
+        vec3ds = PAF[3 * j:3 * j + 3, points[1], points[0]].T   # note order of y, x in index
+
+        vec3d = np.mean(vec3ds, axis=0)
+        vec3d[np.isnan(vec3d)] = 0.0  # numerical stability
+
+        if (A == B).all():  # A and B actually coincides with each other, put the default bone length.
+            print("UNHANDLED")
+            stop
+
+        else:
+            # find the least square solution of Ax = b
+            A = np.zeros([3, 2])
+            A[2, 0] = -1.
+            A[:, 1] = vec3d
+            b = coord3d[conn[1]] - coord3d[conn[0]]  # by this time the z-value of target joint should be 0
+            x, _, _, _ = nl.lstsq(A, b, rcond=-1)
+
+            if x[1] < 0:  # the direction is reversed
+                if vec3d[2] >= 0:
+                    coord3d[conn[1], 2] = coord3d[conn[0], 2] + 0.5  # assume that this connection is vertical to the screen
+                else:
+                    coord3d[conn[1], 2] = coord3d[conn[0], 2] - 0.5
+            else:
+                coord3d[conn[1], 2] = x[0]
+            if nl.norm(vec3d) < 0.1 or x[1] < 0:  # If there is almost no response, or the direction is reversed, put it zero so that Adam does not fit.
+                vec3d[:] = 0
+
+    return coord3d
+
+import matplotlib.pyplot
+from mpl_toolkits.mplot3d import Axes3D
+once = False
+fig = matplotlib.pyplot.figure()
+ax  = fig.add_subplot(111, projection = '3d')
+ax.set_xlim(0,500)
+ax.set_ylim(0,500)
+ax.set_zlim(0,500)
+
+def viz_coord(coord3d, coord2d, mode=0):
+    # DRAW
+    global once
+
+    for j in range(0, len(pof_a)):
+        conn = (pof_a[j], pof_b[j])
+
+        A = coord2d[conn[0]][0:3]
+        B = coord2d[conn[1]][0:3]
+        if A[2] < 0.05 or B[2] < 0.05: continue 
+
+        A = coord3d[conn[0]]
+        B = coord3d[conn[1]]
+
+        ax.plot([A[0], B[0]], [A[1], B[1]], [A[2], B[2]], color = 'b')
+
+    ax.set_xlim(0,300)
+    ax.set_ylim(0,300)
+    ax.set_zlim(0,300)
+
+    if mode == 1:
+        matplotlib.pyplot.show()
+    else:
+        matplotlib.pyplot.pause(0.05)
+        matplotlib.pyplot.draw()
+        ax.clear()
+
+import time
 if __name__ == '__main__':
     #d = DomeReader(mode='training', shuffle=True, objtype=0, crop_noise=True, full_only=False)
 
     #stop
 
-    pofBodyLoader = POFBodyLoader(db_filename="human3d_test.pkl", resolution=368)
-
-    pofBodyLoader.get(40)
-
-    pofBodyLoader.get(40)
+    pofBodyLoader = POFBodyLoader(db_filename="human3d_test.pkl", batch_size=40, resolution=368)
 
 
+    #pofBodyLoader = POFBodyLoader(db_filename="human3d_test.pkl", resolution=368)
+
+    images, paf_masks, pafs, pof_masks, pofs, hm_masks, hms = pofBodyLoader.get()
 
 
-    # # d.rotate_augmentation = True
-    # # d.blur_augmentation = True
-    # data_dict = d.get()
-    # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1)
-    # sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
-    # sess.run(tf.global_variables_initializer())
-    # tf.train.start_queue_runners(sess=sess)
+    i = 0
 
-    # import matplotlib.pyplot as plt
-    # from mpl_toolkits.mplot3d import Axes3D
-    # import utils.general
-    # from utils.vis_heatmap3d import vis_heatmap3d
-    # from utils.PAF import plot_PAF, PAF_to_3D, plot_all_PAF
 
-    # validation_images = []
+    # Debug Img
+    image = (cv2.merge([images[i,0,:,:]+0.5, images[i,1,:,:]+0.5, images[i,2,:,:]+0.5])*255).astype(np.uint8)
 
-    # for i in range(d.num_samples):
-    #     print('{}/{}'.format(i + 1, d.num_samples))
-    #     values = \
-    #         sess.run([data_dict['image_crop'], data_dict['img_dir'], data_dict['keypoint_uv_local'], data_dict['hand_valid'], data_dict['scoremap2d'],
-    #                   data_dict['PAF'], data_dict['mask_crop'], data_dict['keypoint_xyz_local']])
-    #     image_crop, img_dir, hand2d, hand_valid, hand2d_heatmap, PAF, mask_crop, hand3d = [np.squeeze(_) for _ in values]
+    # image_orig = cv2.cvtColor(image,cv2.COLOR_GRAY2BGR)
+    # image = image_orig.copy()
 
-    #     image_name = img_dir.item().decode()
-    #     image_v = ((image_crop + 0.5) * 255).astype(np.uint8)
+    cv2.imshow("win", image)
+    cv2.waitKey(0)
 
-    #     hand2d_detected, bscore = utils.PAF.detect_keypoints2d_PAF(hand2d_heatmap, PAF, objtype=1)
-    #     # hand2d_detected = utils.general.detect_keypoints2d(hand2d_heatmap)[:20, :]
-    #     hand3d_detected, _ = PAF_to_3D(hand2d_detected, PAF, objtype=1)
-    #     hand3d_detected = hand3d_detected[:21, :]
+    # Get Peak 1 Person
+    pid = 0
+    import nms
+    peaks = nms.NMS({'thre1': 0.05}, hms[i,:,:,:], 8)
 
-    #     fig = plt.figure(1)
-    #     ax1 = fig.add_subplot(231)
-    #     plt.imshow(image_v)
-    #     utils.general.plot2d(ax1, hand2d, type_str='hand', valid_idx=hand_valid, color=np.array([1.0, 0.0, 0.0]))
-    #     utils.general.plot2d(ax1, hand2d_detected, type_str='hand', valid_idx=hand_valid, color=np.array([0.0, 0.0, 1.0]))
+    coord2d = np.zeros((25,3), dtype=np.float32)
+    for j in range(0, 25):
+        peak = peaks[j]
+        if peak.shape[0] == 0: continue
+        coord2d[j,:] = np.array([peak[pid][0], peak[pid][1], peak[pid][2]])
 
-    #     ax2 = fig.add_subplot(232, projection='3d')
-    #     utils.general.plot3d(ax2, hand3d_detected, type_str='hand', valid_idx=hand_valid, color=np.array([0.0, 0.0, 1.0]))
-    #     ax2.set_xlabel('X Label')
-    #     ax2.set_ylabel('Y Label')
-    #     ax2.set_zlabel('Z Label')
-    #     plt.axis('equal')
 
-    #     ax3 = fig.add_subplot(233, projection='3d')
-    #     utils.general.plot3d(ax3, hand3d, type_str='hand', valid_idx=hand_valid, color=np.array([1.0, 0.0, 0.0]))
-    #     ax2.set_xlabel('X Label')
-    #     ax2.set_ylabel('Y Label')
-    #     ax2.set_zlabel('Z Label')
-    #     plt.axis('equal')
+    # # VIZ
+    # points3d = np.zeros((25,3))
+    # for j in range(0, len(pof_a)):
+    #     cindex = (pof_a[j], pof_b[j])
+    #     pointa = points[cindex[0]]
+    #     pointb = points[cindex[1]]
+    #     if pointa[2] < 0.05 or pointb[2] < 0.05: continue
+    #     sample_points = samplePoints(pointa, pointb, 20, 5)
+    #     for sample_point in sample_points:
+    #         cv2.circle(image, (int(sample_point[0]),int(sample_point[1])), 1, (255, 255, 255), 1)
+    #     cv2.imshow("win", image)
+    #     cv2.waitKey(0)
 
-    #     xy, z = plot_all_PAF(PAF, 3)
-    #     ax4 = fig.add_subplot(234)
-    #     ax4.imshow(xy)
+    coord3d = PAF_to_3D(coord2d, pofs[i,:,:,:], 8, image)
 
-    #     ax5 = fig.add_subplot(235)
-    #     ax5.imshow(z)
+    #while 1:
+    viz_coord(coord3d, coord2d)
+        #time.sleep(0.1)
+    #    print("A")
 
-    #     plt.show()
+    # VIZ
+    viz_pof(images[i,:,:,:], pofs[i,:,:,:], None)
 
-# {0,  "Nose"}, # 1
-# {1,  "LEye"}, # 15
-# {2,  "REye"}, # 17
-# {3,  "LEar"}, # 16
-# {4,  "REar"}, # 18
-# {5,  "LShoulder"}, # 3
-# {6,  "RShoulder"}, # 9
-# {7,  "LElbow"}, # 4
-# {8,  "RElbow"}, # 10
-# {9,  "LWrist"}, # 5
-# {10, "RWrist"}, # 11
-# {11, "LHip"}, # 6
-# {12, "RHip"}, # 12
-# {13, "LKnee"}, # 7
-# {14, "RKnee"}, # 13
-# {15, "LAnkle"}, # 8
-# {16, "RAnkle"}, # 14
-# {17, "UpperNeck"},
-# {18, "HeadTop"},
-# {19, "LBigToe"},
-# {20, "LSmallToe"},
-# {21, "LHeel"},
-# {22, "RBigToe"},
-# {23, "RSmallToe"},
-# {24, "RHeel"},
+        #print(pointa, pointb)
 
-# VGG is unlocked ?
-# WHen OPLoader, Lock POF, Unlock PAF,KP
-# When Dome, Lock PAF, KP, Unlock POF
+    # for j in range(0, 25):
+
+
+    #     image = images[i,0,:,:]+0.5
+    #     image_orig = cv2.cvtColor(image,cv2.COLOR_GRAY2BGR)
+    #     image = image_orig.copy()
+
+    #     # point = (int(peak[pid][0]), int(peak[pid][1]))
+    #     # prob = float(peak[pid][2])
+    #     # print(point)
+
+    #     cv2.circle(image,(int(points[j,0]), int(points[j,1])), 5, (255,0,0), -1)
+
+    #     # # print(peak)
+    #     # # stop
+
+    #     cv2.imshow("win", image)
+    #     cv2.waitKey(0)
+
+    #viz_hm(images[i,:,:,:], hms[i,:,:,:])
+
+    # # Viz
+    # for i in range(0, 10):
+    #     viz_hm(images[i,:,:,:], hms[i,:,:,:])
+
+    # # Viz
+    # for i in range(0, 10):
+    #     viz_pof(images[i,:,:,:], pofs[i,:,:,:], pafs[i,:,:,:])
+
+
+ 

@@ -60,7 +60,7 @@ def process_frame(frame, boxsize):
     bbox = [boxsize, max(rframe.shape[1], boxsize)];
     imageForNet, padding = pad_image(rframe, 0, bbox)
     imageForNet = imageForNet.astype(np.float32)
-    imageForNet = imageForNet/256. - 0.5
+    imageForNet = imageForNet/255. - 0.5
     imageForNet = np.transpose(imageForNet, (2,0,1))
     return rframe, imageForNet, scaleImage
 

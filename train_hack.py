@@ -36,7 +36,6 @@ from openpose import pyopenpose as op
 
 from models import *
 from loader import *
-import pof
 
 # Parsers
 parser = argparse.ArgumentParser(description='OP')
@@ -58,8 +57,8 @@ opWrapper.configure(params)
 opWrapper.start()
 
 # Setup Model
-NAME = "weights_pof"
-model = Model(Gines(pof=True), ngpu=int(args.ngpu)).cuda()
+NAME = "weights_gines_no"
+model = Model(Gines(), ngpu=int(args.ngpu)).cuda()
 model.train()
 
 # Load weights etc.
@@ -79,8 +78,8 @@ params = {
     "batch_size" : int(args.batch),
     "stride": 8,
     "max_degree_rotations": "45.0",
-    "crop_size_x": 368,
-    "crop_size_y": 368,
+    "crop_size_x": 480,
+    "crop_size_y": 480,
     "center_perterb_max": 40.0,
     "center_swap_prob": 0.0,
     "scale_prob": 1.0,
@@ -98,9 +97,6 @@ params = {
 }
 myClass = opcaffe.OPCaffe(params)
 
-# POF
-pofBodyLoader = pof.POFBodyLoader(db_filename="human3d_test.pkl", batch_size=int(args.batch), resolution=368)
-
 # # Caffe Loader
 # WORKER_SIZE = int(args.ngpu)
 # BATCH_SIZE = int(args.batch)
@@ -112,13 +108,11 @@ pofBodyLoader = pof.POFBodyLoader(db_filename="human3d_test.pkl", batch_size=int
 # Loss
 lr = 0.000020
 parameters = [
-        {"params": model.net.vgg19.parameters(), "lr": lr*1, "key": "vgg19"},
-        {"params": model.net.pafA.parameters(), "lr": lr*4, "key": "pafA"},
-        {"params": model.net.pafB.parameters(), "lr": lr*4, "key": "pafB"},
-        {"params": model.net.pafC.parameters(), "lr": lr*4, "key": "pafC"},
-        {"params": model.net.hmNetwork.parameters(), "lr": lr*4, "key": "hmNetwork"},
-        {"params": model.net.pofA.parameters(), "lr": lr*4, "key": "pofA"},
-        {"params": model.net.pofB.parameters(), "lr": lr*4, "key": "pofB"},
+        {"params": model.net.vgg19.parameters(), "lr": lr*1},
+        {"params": model.net.pafA.parameters(), "lr": lr*4},
+        {"params": model.net.pafB.parameters(), "lr": lr*4},
+        {"params": model.net.pafC.parameters(), "lr": lr*4},
+        {"params": model.net.hmNetwork.parameters(), "lr": lr*4},
     ]
 mseLoss = torch.nn.MSELoss()
 optimizer = optim.Adam(parameters, lr=lr, betas=(0.9, 0.999))
@@ -128,133 +122,126 @@ def half_lr(optimizer):
     for param_group in optimizer.param_groups:
         param_group['lr'] /= 2.
 
+import threading
+import time
 import random
-def decision(probability):
-    return random.random() < probability
 
-def train_section(optimizer, keyname, mode):    
-    for param_group in optimizer.param_groups:
-        if param_group['key'] == keyname:
-            if mode:
-                if 'old_lr' in param_group: param_group['lr'] = param_group['old_lr']
-            else:
-                param_group['old_lr'] = param_group['lr']
-                param_group['lr'] = 0.
-            #print((keyname) + " " + str(param_group['lr'])) 
+# condition = threading.Condition()
+# queue = []
 
-###############################
+# class ProducerThread(threading.Thread):
+#     def run(self):
+#         global queue, myClass
+#         while True:
+
+
+#             condition.acquire()
+
+#             if len(queue) < 5:
+
+#                 batch = opcaffe.Batch()
+#                 myClass.load(batch)
+#                 data = torch.tensor(batch.data)
+#                 label = torch.tensor(batch.label)
+#                 queue.append([data, label])
+#                 #print("Produced" + str(len(queue)))
+
+#             condition.notify()
+#             condition.release()
+
+
+#             time.sleep(0.1)
+
+
+# ProducerThread().start()
 
 from torch.multiprocessing import Process, Queue, cpu_count
 
-def work_op(loader, queue_op):
+def work(loader, queue):
+
     while 1:
-        if queue_op.qsize() < 5:
+
+        if queue.qsize() < 5:
             batch = opcaffe.Batch()
             myClass.load(batch)
             data = torch.tensor(batch.data)
             label = torch.tensor(batch.label)
-            queue_op.put([data, label])
+            queue.put([data, label])
+            print("Added")
+
         time.sleep(0.1)
 
-queue_op = Queue()
-process_op = Process(target=work_op, args=(myClass, queue_op))
-process_op.start()
+queue = Queue()
+process = Process(target=work, args=(myClass, queue))
 
-def work_pof(loader, queue_pof):
-    while 1:
-        if queue_pof.qsize() < 5:
-            queue_pof.put(pofBodyLoader.get())
-        time.sleep(0.1)
-
-queue_pof = Queue()
-process_pof = Process(target=work_pof, args=(pofBodyLoader, queue_pof))
-process_pof.start()
-
-###############################
+process.start()
 
 # Iterate
 while 1:
     iterations += 1
+
+    data, label = queue.get()
+
+    # print(data.shape)
+
+    # print("Main")
+    # time.sleep(1)
+    # continue
+
+    start = time.time()
+
+
+    # condition.acquire()
+    # if not queue:
+    #     print("Nothing in queue, consumer will wait.")
+    #     condition.wait()
+    #     print("Producer added something to queue - consumer will stop waiting.")
+    # data, label = queue.pop(0)
+    # #print("Consumed" + str(len(queue)))
+    # condition.release()
+
+
+    # batch = opcaffe.Batch()
+    # myClass.load(batch)
+    # data = torch.tensor(batch.data)
+    # label = torch.tensor(batch.label)
 
     # LR
     if iterations in lr_half_sets:
         print("Half LR")
         half_lr(optimizer) 
 
-    # Dataset Prob
-    pof_mode = decision(0.2)
+    # Split
+    bs = 5
+    paf_mask = label[0:bs, 0:TOTAL_PAFS].cuda()
+    hm_mask = label[0:bs, TOTAL_PAFS:TOTAL_PAFS+TOTAL_HMS].cuda()
+    paf_truth = label[0:bs, TOTAL_PAFS+TOTAL_HMS:TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS].cuda()
+    hm_truth = label[0:bs, TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS:TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS+TOTAL_HMS].cuda()
+    imgs = data[0:bs, :,:,:].cuda()
 
-    # POF Mode
-    if pof_mode:
+    # Mask
+    paf_truth_m = torch.mul(paf_truth, paf_mask)
+    hm_truth_m = torch.mul(hm_truth, hm_mask)
 
-        # EnableDisable
-        print("POF")
-        train_section(optimizer, "hmNetwork", False)
-        train_section(optimizer, "pofA", True)
-        train_section(optimizer, "pofB", True)
+    # Forward Model
+    pafA, pafB, pafC, hm = model.forward(imgs)
 
-        # Get Data
-        images, paf_masks, pafs, pof_masks, pofs = queue_pof.get()
-
-        # Convert Torch
-        imgs = torch.tensor(images).cuda()
-        paf_mask = torch.tensor(paf_masks).cuda()
-        pof_mask = torch.tensor(pof_masks).cuda()
-        paf_truth = torch.tensor(pafs).cuda()
-        pof_truth = torch.tensor(pofs).cuda()
-
-        # Mask
-        paf_truth_m = torch.mul(paf_truth, paf_mask)
-        pof_truth_m = torch.mul(pof_truth, pof_mask)
-
-        # Forward Model
-        pafA, pafB, pafC, hm, pofA, pofB = model.forward(imgs, True)       
-
-        # Opt
-        loss = 0
-        loss += mseLoss(torch.mul(pafA, paf_mask), paf_truth_m)
-        loss += mseLoss(torch.mul(pafB, paf_mask), paf_truth_m)
-        loss += mseLoss(torch.mul(pafC, paf_mask), paf_truth_m)
-        loss += mseLoss(torch.mul(pofA, pof_mask), pof_truth_m)  
-        loss += mseLoss(torch.mul(pofB, pof_mask), pof_truth_m)         
-
-    # Normal Mode
-    else:
-
-        # EnableDisable
-        print("Normal")
-        train_section(optimizer, "hmNetwork", True)
-        train_section(optimizer, "pofA", False)
-        train_section(optimizer, "pofB", False)
-
-        # Load OP Data
-        data, label = queue_op.get()
-
-        # Split
-        paf_mask = label[:, 0:TOTAL_PAFS].cuda()
-        hm_mask = label[:, TOTAL_PAFS:TOTAL_PAFS+TOTAL_HMS].cuda()
-        paf_truth = label[:, TOTAL_PAFS+TOTAL_HMS:TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS].cuda()
-        hm_truth = label[:, TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS:TOTAL_PAFS+TOTAL_HMS+TOTAL_PAFS+TOTAL_HMS].cuda()
-        imgs = data.cuda()
-
-        # Mask
-        paf_truth_m = torch.mul(paf_truth, paf_mask)
-        hm_truth_m = torch.mul(hm_truth, hm_mask)
-
-        # Forward Model
-        pafA, pafB, pafC, hm, pofA, pofB  = model.forward(imgs)
-
-        # Opt
-        loss = 0
-        loss += mseLoss(torch.mul(pafA, paf_mask), paf_truth_m)
-        loss += mseLoss(torch.mul(pafB, paf_mask), paf_truth_m)
-        loss += mseLoss(torch.mul(pafC, paf_mask), paf_truth_m)
-        loss += mseLoss(torch.mul(hm, hm_mask), hm_truth_m)
+    # Opt
+    loss = 0
+    loss += mseLoss(torch.mul(pafA, paf_mask), paf_truth_m)
+    loss += mseLoss(torch.mul(pafB, paf_mask), paf_truth_m)
+    loss += mseLoss(torch.mul(pafC, paf_mask), paf_truth_m)
+    loss += mseLoss(torch.mul(hm, hm_mask), hm_truth_m)
 
     # Opt
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
+
+    end = time.time()
+    print("Train")
+    print(end - start)
+
 
     # Save
     if iterations % 2000 == 0 or exit:
@@ -263,16 +250,8 @@ while 1:
             'iterations': iterations,
             'state_dict': model.state_dict(),
         }, NAME)
-    if exit: 
-        print("Done")
-        del model
-        sys.exit()
+    if exit: sys.exit()
     print((iterations,loss))
-
-    # Re-enable back all
-    train_section(optimizer, "hmNetwork", True)
-    train_section(optimizer, "pofA", True)
-    train_section(optimizer, "pofB", True)
 
     # # OP Test
     # test_index = 0
@@ -295,7 +274,7 @@ while 1:
     # cv2.imshow("hm_pred_viz", cv2.resize(hm_pred_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
     # cv2.imshow("hm_truth_viz", cv2.resize(hm_truth_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
     # cv2.imshow("img", img_viz+0.5)
-    # cv2.waitKey(15)
+    # cv2.waitKey(0)
 
 
 """
