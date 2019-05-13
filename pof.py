@@ -4,7 +4,10 @@ import pickle
 import json
 import os
 
-DATASET_LOCATION = "/media/posefs0c/panopticdb/a4/"
+IMAGE_ROOT = '/media/posefs0c/panopticdb/'
+TOTALPOSE_ROOT = '/media/posefs0c/Users/donglaix/Experiments/totalPose/'
+OP_CAFFE_TRAIN_PATH = '/home/raaj/openpose_caffe_train/build/op/'
+LMDB_BACKGROUND = "/media/raaj/Storage/openpose_train/dataset/lmdb_background"
 
 # {0,  "Nose"}, # 1
 # {1,  "LEye"}, # 15
@@ -51,9 +54,6 @@ dome_to_body25b[14] = 13
 dome_to_body25b[15] = 8
 dome_to_body25b[16] = 14
 
-
-
-
 def convert(points):
     new_points = np.zeros((17,3))
 
@@ -68,9 +68,9 @@ def convert(points):
 
 class DomeReader():
 
-    def __init__(self, mode='training', objtype=0, shuffle=False, batch_size=1, crop_noise=False, full_only=True, head_top=True):
-        self.image_root = '/media/posefs0c/panopticdb/'
-        self.totalpose_root = '/media/posefs0c/Users/donglaix/Experiments/totalPose/'
+    def __init__(self, mode='training', objtype=0, shuffle=False, batch_size=1, crop_noise=False, full_only=True, head_top=True, debug=False, savename="human.pkl"):
+        self.image_root = IMAGE_ROOT
+        self.totalpose_root = TOTALPOSE_ROOT
 
         # read data from a4
         path_to_db = self.totalpose_root + '/data/a4_collected_p2.pkl'
@@ -109,7 +109,7 @@ class DomeReader():
         counter = 0
         for data3d in mode_data:
             counter+=1
-            #if counter == 5: break
+            if counter == 5 and debug: break
             print(float(counter)/float(len(mode_data)))
             seqName = data3d['seqName']
             frame_str = data3d['frame_str']
@@ -252,7 +252,7 @@ class DomeReader():
         counter = 0
         for data3d in mode_data:
             counter+=1
-            #if counter == 5: break
+            if counter == 5 and debug: break
             print(float(counter)/float(len(mode_data)))
             seqName = data3d['seqName']
             frame_str = data3d['frame_str']
@@ -355,15 +355,7 @@ class DomeReader():
         human3d.update(calib)
         human3d['img_dirs'] = img_dirs
 
-        pickle.dump(human3d, open('human3d.pkl',"wb"), protocol=2)
-
-        # import cv2
-        # for img_dir in img_dirs:
-        #     if cv2.imread(img_dir) is None:
-        #         print(img_dir)
-
-        # self.register_tensor(human3d, order_dict)
-        # self.num_samples = len(self.tensor_dict['img_dirs'])
+        pickle.dump(human3d, open(savename,"wb"), protocol=2)
 
     def get(self, withPAF=True):
         d = super(DomeReader, self).get(withPAF=withPAF)
@@ -479,7 +471,7 @@ def samplePoints(A, B, sample_dist = 20, sample_min = 5):
 
 
 import sys
-sys.path.insert(0, "/home/raaj/openpose_caffe_train/build/op/")
+sys.path.insert(0, OP_CAFFE_TRAIN_PATH)
 import opcaffe
 
 def create_meta(points_3d, points_2d, img):
@@ -612,7 +604,7 @@ class POFBodyLoader():
             "number_max_occlusions": "2",
             "sigmas": "7.0",
             "model": "COCO_25B_17",
-            "source_background": "/media/raaj/Storage/openpose_train/dataset/lmdb_background",
+            "source_background": LMDB_BACKGROUND,
         }
         self.opTransformer = opcaffe.OPTransformer(params)
 
@@ -829,95 +821,7 @@ def viz_coord(coord3d, coord2d, mode=0):
 
 import time
 if __name__ == '__main__':
-    #d = DomeReader(mode='training', shuffle=True, objtype=0, crop_noise=True, full_only=False)
 
-    #stop
-
-    pofBodyLoader = POFBodyLoader(db_filename="human3d_test.pkl", batch_size=40, resolution=368)
-
-
-    #pofBodyLoader = POFBodyLoader(db_filename="human3d_test.pkl", resolution=368)
-
-    images, paf_masks, pafs, pof_masks, pofs, hm_masks, hms = pofBodyLoader.get()
-
-
-    i = 0
-
-
-    # Debug Img
-    image = (cv2.merge([images[i,0,:,:]+0.5, images[i,1,:,:]+0.5, images[i,2,:,:]+0.5])*255).astype(np.uint8)
-
-    # image_orig = cv2.cvtColor(image,cv2.COLOR_GRAY2BGR)
-    # image = image_orig.copy()
-
-    cv2.imshow("win", image)
-    cv2.waitKey(0)
-
-    # Get Peak 1 Person
-    pid = 0
-    import nms
-    peaks = nms.NMS({'thre1': 0.05}, hms[i,:,:,:], 8)
-
-    coord2d = np.zeros((25,3), dtype=np.float32)
-    for j in range(0, 25):
-        peak = peaks[j]
-        if peak.shape[0] == 0: continue
-        coord2d[j,:] = np.array([peak[pid][0], peak[pid][1], peak[pid][2]])
-
-
-    # # VIZ
-    # points3d = np.zeros((25,3))
-    # for j in range(0, len(pof_a)):
-    #     cindex = (pof_a[j], pof_b[j])
-    #     pointa = points[cindex[0]]
-    #     pointb = points[cindex[1]]
-    #     if pointa[2] < 0.05 or pointb[2] < 0.05: continue
-    #     sample_points = samplePoints(pointa, pointb, 20, 5)
-    #     for sample_point in sample_points:
-    #         cv2.circle(image, (int(sample_point[0]),int(sample_point[1])), 1, (255, 255, 255), 1)
-    #     cv2.imshow("win", image)
-    #     cv2.waitKey(0)
-
-    coord3d = PAF_to_3D(coord2d, pofs[i,:,:,:], 8, image)
-
-    #while 1:
-    viz_coord(coord3d, coord2d)
-        #time.sleep(0.1)
-    #    print("A")
-
-    # VIZ
-    viz_pof(images[i,:,:,:], pofs[i,:,:,:], None)
-
-        #print(pointa, pointb)
-
-    # for j in range(0, 25):
-
-
-    #     image = images[i,0,:,:]+0.5
-    #     image_orig = cv2.cvtColor(image,cv2.COLOR_GRAY2BGR)
-    #     image = image_orig.copy()
-
-    #     # point = (int(peak[pid][0]), int(peak[pid][1]))
-    #     # prob = float(peak[pid][2])
-    #     # print(point)
-
-    #     cv2.circle(image,(int(points[j,0]), int(points[j,1])), 5, (255,0,0), -1)
-
-    #     # # print(peak)
-    #     # # stop
-
-    #     cv2.imshow("win", image)
-    #     cv2.waitKey(0)
-
-    #viz_hm(images[i,:,:,:], hms[i,:,:,:])
-
-    # # Viz
-    # for i in range(0, 10):
-    #     viz_hm(images[i,:,:,:], hms[i,:,:,:])
-
-    # # Viz
-    # for i in range(0, 10):
-    #     viz_pof(images[i,:,:,:], pofs[i,:,:,:], pafs[i,:,:,:])
-
-
- 
+    # Generate Data
+    DomeReader(mode='training', shuffle=True, objtype=0, crop_noise=True, full_only=False, debug=False, savename="human3d.pkl")
+    DomeReader(mode='training', shuffle=True, objtype=0, crop_noise=True, full_only=False, debug=True, savename="human3d_test.pkl")

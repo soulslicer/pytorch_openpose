@@ -20,10 +20,18 @@ import torch.utils.model_zoo as model_zoo
 import os 
 import cv2
 os.environ['GLOG_minloglevel'] = '2' 
-#import caffe
 dir_path = os.path.dirname(os.path.realpath(__file__))
+
+# Params
+NAME = "weights_gines_no"
+OP_CAFFE_TRAIN_PATH = '/home/raaj/openpose_caffe_train/build/op/'
+OP_PYTHON_PATH = '/home/raaj/openpose_orig/build/python/'
+OP_MODEL_FOLDER = '/home/raaj/openpose_orig/models/'
+OP_LMDB_FOLDER = '/media/raaj/Storage/openpose_train/dataset/'
+POF_PKL_FILE = "human3d_test.pkl"
+
 import sys
-sys.path.insert(0, "/home/raaj/openpose_caffe_train/build/op/")
+sys.path.insert(0, OP_CAFFE_TRAIN_PATH)
 import opcaffe
 import signal
 exit = 0
@@ -31,7 +39,7 @@ def signal_handler(sig, frame):
     global exit
     exit = 1
 signal.signal(signal.SIGINT, signal_handler)
-sys.path.append('/home/raaj/openpose_orig/build/python/')
+sys.path.append(OP_PYTHON_PATH)
 from openpose import pyopenpose as op
 
 from models import *
@@ -49,7 +57,7 @@ args = parser.parse_args()
 
 # Sample OP Network
 params = dict()
-params["model_folder"] = "/home/raaj/openpose_orig/models/"
+params["model_folder"] = OP_MODEL_FOLDER
 params["body"] = 2  # Disable OP Network
 params["upsampling_ratio"] = 0
 params["model_pose"] = "BODY_25B"
@@ -90,16 +98,16 @@ params = {
     "number_max_occlusions": "2",
     "sigmas": "7.0",
     "models": "COCO_25B_23;COCO_25B_17;MPII_25B_16;PT_25B_15",
-    "sources": "/media/raaj/Storage/openpose_train/dataset/lmdb_coco2017_foot;/media/raaj/Storage/openpose_train/dataset/lmdb_coco;/media/raaj/Storage/openpose_train/dataset/lmdb_mpii;/media/raaj/Storage/openpose_train/dataset/lmdb_pt2_train",
+    "sources": OP_LMDB_FOLDER+"lmdb_coco2017_foot;"+OP_LMDB_FOLDER+"lmdb_coco;"+OP_LMDB_FOLDER+"lmdb_mpii;"+OP_LMDB_FOLDER+"lmdb_pt2_train",
     "probabilities": "0.05;0.85;0.05;0.05",
-    "source_background": "/media/raaj/Storage/openpose_train/dataset/lmdb_background",
+    "source_background": OP_LMDB_FOLDER+"lmdb_background",
     "normalization": 0,
     "add_distance": 0
 }
 myClass = opcaffe.OPCaffe(params)
 
 # POF
-pofBodyLoader = pof.POFBodyLoader(db_filename="human3d_test.pkl", batch_size=int(args.batch), resolution=368)
+pofBodyLoader = pof.POFBodyLoader(db_filename=POF_PKL_FILE, batch_size=int(args.batch), resolution=368)
 
 # # Caffe Loader
 # WORKER_SIZE = int(args.ngpu)
@@ -273,31 +281,3 @@ while 1:
     train_section(optimizer, "hmNetwork", True)
     train_section(optimizer, "pofA", True)
     train_section(optimizer, "pofB", True)
-
-    # # OP Test
-    # test_index = 0
-    # hm_final = hms_pred[ITERATIONS-1][test_index,:,:,:]
-    # paf_final = pafs_pred[ITERATIONS-1][test_index,:,:,:]
-    # poseHeatMaps = torch.cat([hm_final, paf_final], 0).detach().cpu().numpy().copy()
-    # imageToProcess = imgs.detach().cpu().numpy().copy()[test_index,:,:,:]
-    # imageToProcess = (cv2.merge([imageToProcess[0,:,:]+0.5, imageToProcess[1,:,:]+0.5, imageToProcess[2,:,:]+0.5])*255).astype(np.uint8)
-    # datum = op.Datum()
-    # datum.cvInputData = imageToProcess
-    # datum.poseNetOutput = poseHeatMaps
-    # opWrapper.emplaceAndPop([datum])
-    # print("Body keypoints: \n" + str(datum.poseKeypoints))
-    # cv2.imshow("OpenPose 1.4.0 - Tutorial Python API", datum.cvOutputData)
-    # cv2.waitKey(0)
-
-    # img_viz = imgs.detach().cpu().numpy().copy()[0,0,:,:]
-    # hm_pred_viz = hms_pred[ITERATIONS-1].detach().cpu().numpy().copy()[0,0,:,:]
-    # hm_truth_viz = hm_truth_m.cpu().numpy().copy()[0,0,:,:]
-    # cv2.imshow("hm_pred_viz", cv2.resize(hm_pred_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
-    # cv2.imshow("hm_truth_viz", cv2.resize(hm_truth_viz, (0,0), fx=8, fy=8, interpolation = cv2.INTER_CUBIC))
-    # cv2.imshow("img", img_viz+0.5)
-    # cv2.waitKey(15)
-
-
-"""
-Training of POF?
-"""

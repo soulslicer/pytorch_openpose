@@ -22,13 +22,21 @@ import cv2
 os.environ['GLOG_minloglevel'] = '2' 
 #import caffe
 dir_path = os.path.dirname(os.path.realpath(__file__))
+
+# Params
+NAME = "weights_gines_no"
+OP_CAFFE_TRAIN_PATH = '/home/raaj/openpose_caffe_train/build/op/'
+OP_PYTHON_PATH = '/home/raaj/openpose_orig/build/python/'
+OP_MODEL_FOLDER = '/home/raaj/openpose_orig/models/'
+OP_LMDB_FOLDER = '/media/raaj/Storage/openpose_train/dataset/'
+
+# Import OP
 import sys
-sys.path.insert(0, "/home/raaj/openpose_caffe_train/build/op/")
+sys.path.insert(0, OP_CAFFE_TRAIN_PATH)
 import opcaffe
 import signal
-sys.path.append('/home/raaj/openpose_orig/build/python/')
+sys.path.append(OP_PYTHON_PATH)
 from openpose import pyopenpose as op
-
 from models import *
 
 # DATA
@@ -44,7 +52,7 @@ args = parser.parse_args()
 
 # Sample OP Network
 params = dict()
-params["model_folder"] = "/home/raaj/openpose_orig/models/"
+params["model_folder"] = OP_MODEL_FOLDER
 params["body"] = 2  # Disable OP Network
 params["upsampling_ratio"] = 0
 params["model_pose"] = "BODY_25B"
@@ -54,7 +62,6 @@ opWrapper.configure(params)
 opWrapper.start()
 
 # Setup Model
-NAME = "weights_gines"
 model = Model(Gines(), ngpu=int(1)).cuda()
 model.eval()
 
@@ -77,7 +84,7 @@ image_files = natsort.natsorted(glob.glob(VAL_PATH))
 scale_factors = dict()
 for image_file in image_files:
     iterations += 1
-    #print(float(iterations)/float(len(image_files)))
+    print(float(iterations)/float(len(image_files)))
     true_name = (image_file.split("/")[-1]).split(".")[0]
     img = cv2.imread(image_file)
     rframe, imageForNet, scaleFactor = process_frame(img, 368)
@@ -119,27 +126,3 @@ for item in json_result:
 
 with open(COCOSAVE_PATH, 'w') as fp:
     json.dump(json_result, fp)
-
- # Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets= 20 ] = 0.500
- # Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets= 20 ] = 0.734
- # Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets= 20 ] = 0.528
- # Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets= 20 ] = 0.435
- # Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets= 20 ] = 0.593
- # Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 20 ] = 0.550
- # Average Recall     (AR) @[ IoU=0.50      | area=   all | maxDets= 20 ] = 0.758
- # Average Recall     (AR) @[ IoU=0.75      | area=   all | maxDets= 20 ] = 0.579
- # Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets= 20 ] = 0.449
- # Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets= 20 ] = 0.691
-
-# In OP
-
- # Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets= 20 ] = 0.524
- # Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets= 20 ] = 0.764
- # Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets= 20 ] = 0.565
- # Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets= 20 ] = 0.452
- # Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets= 20 ] = 0.624
- # Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 20 ] = 0.575
- # Average Recall     (AR) @[ IoU=0.50      | area=   all | maxDets= 20 ] = 0.786
- # Average Recall     (AR) @[ IoU=0.75      | area=   all | maxDets= 20 ] = 0.611
- # Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets= 20 ] = 0.467
- # Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets= 20 ] = 0.726
