@@ -201,10 +201,10 @@ class ABlock7x7(torch.nn.Module):
     def forward(self, x):
         return self.net(x)
 
-class Body25(nn.Module):
+class Body25Shared(nn.Module):
 
     def __init__(self, mode="3x3"):
-        super(Body25, self).__init__()
+        super(Body25Shared, self).__init__()
 
         # Input Channel, Channel, Kernel Size, Stride, Padding
         self.vgg19 = nn.Sequential(OrderedDict([
@@ -533,3 +533,164 @@ class Gines(nn.Module):
         else:
 
             return pafA, pafB, pafC, hm
+
+class Body25B(nn.Module):
+
+    def __init__(self):
+        super(Body25B, self).__init__()
+
+        # Input Channel, Channel, Kernel Size, Stride, Padding
+        self.vgg19 = nn.Sequential(OrderedDict([
+            ('conv1_1', nn.Conv2d(3, 64, 3, 1, 1)),
+            ('relu1_1', nn.ReLU()),
+            ('conv1_2', nn.Conv2d(64, 64, 3, 1, 1)),
+            ('relu1_2', nn.ReLU()),
+            ('pool1_stage1', nn.MaxPool2d(2, 2)),
+
+            ('conv2_1', nn.Conv2d(64, 128, 3, 1, 1)),
+            ('relu2_1', nn.ReLU()),
+            ('conv2_2', nn.Conv2d(128, 128, 3, 1, 1)),
+            ('relu2_2', nn.ReLU()),
+            ('pool2_stage1', nn.MaxPool2d(2, 2)),
+
+            ('conv3_1', nn.Conv2d(128, 256, 3, 1, 1)),
+            ('relu3_1', nn.ReLU()),
+            ('conv3_2', nn.Conv2d(256, 256, 3, 1, 1)),
+            ('relu3_2', nn.ReLU()),
+            ('conv3_3', nn.Conv2d(256, 256, 3, 1, 1)),
+            ('relu3_3', nn.ReLU()),
+            ('conv3_4', nn.Conv2d(256, 256, 3, 1, 1)),
+            ('relu3_4', nn.ReLU()),
+            ('pool3_stage1', nn.MaxPool2d(2, 2)),
+
+            ('conv4_1', nn.Conv2d(256, 512, 3, 1, 1)),
+            ('relu4_1', nn.ReLU()),
+            ('conv4_2', nn.Conv2d(512, 512, 3, 1, 1)),
+            ('prelu4_2', nn.PReLU(512)),
+
+            ('conv4_3_CPM', nn.Conv2d(512, 256, 3, 1, 1)),
+            ('prelu4_3_CPM', nn.PReLU(256)),
+            ('conv4_4_CPM', nn.Conv2d(256, TOTAL_FM, 3, 1, 1)),
+            ('prelu4_4_CPM', nn.PReLU(128)),
+        ]))
+
+        self.pafA = ABlock3x3(TOTAL_FM, TOTAL_PAFS, Depth=64, SubDepth=256)
+        self.pafB = ABlock3x3(TOTAL_FM + TOTAL_PAFS, TOTAL_PAFS, Depth=128, SubDepth=256)
+        self.pafC = ABlock3x3(TOTAL_FM + TOTAL_PAFS, TOTAL_PAFS, Depth=128, SubDepth=512)
+        self.pafD = ABlock3x3(TOTAL_FM + TOTAL_PAFS, TOTAL_PAFS, Depth=128, SubDepth=512)
+        self.pafE = ABlock3x3(TOTAL_FM + TOTAL_PAFS, TOTAL_PAFS, Depth=128, SubDepth=512)
+        self.hmNetwork = ABlock3x3(TOTAL_FM + TOTAL_PAFS, TOTAL_HMS, Depth=128, SubDepth=512)
+
+        self.load_vgg()
+
+    def load_vgg(self):
+        # Apply Xavier Init
+        def init_weights(m):
+            if type(m) == nn.Conv2d:
+                torch.nn.init.xavier_uniform_(m.weight)
+                m.bias.data.fill_(0.01)
+        self.pafA.apply(init_weights)
+        self.pafB.apply(init_weights)
+        self.pafC.apply(init_weights)
+        self.pafD.apply(init_weights)
+        self.pafE.apply(init_weights)
+        self.hmNetwork.apply(init_weights)
+
+        # Load VGG19
+        vgg19_model_url = 'https://download.pytorch.org/models/vgg19-dcbb9e9d.pth'
+        vgg_state_dict = model_zoo.load_url(vgg19_model_url, model_dir=dir_path)  # save to local path
+        vgg_keys = vgg_state_dict.keys()
+        weights_load = {}
+        for i in range(20):  # use first 10 conv layers of vgg19, 20 weights in all (weight+bias)
+            weights_load[list(self.vgg19.state_dict().keys())[i]] = vgg_state_dict[list(vgg_keys)[i]]
+
+        state = self.vgg19.state_dict()
+        state.update(weights_load)
+        self.vgg19.load_state_dict(state)
+
+    def load_caffe_se(self, start_name, end_name, caffe_net, torch_net):
+        weights_load = {}
+        i = -1
+        start = False
+        for key in caffe_net.params:
+            if key == start_name: start = True
+            if not start: continue
+
+            i+=1
+            W = caffe_net.params[key][0].data[...]
+            weights_load[torch_net.state_dict().keys()[i]] = torch.tensor(W)
+            if len(caffe_net.params[key]) > 1:
+                i+=1
+                b = caffe_net.params[key][1].data[...]
+                weights_load[torch_net.state_dict().keys()[i]] = torch.tensor(b)
+
+            if key == end_name: start = False
+
+        return weights_load
+
+    def load_caffe(self):
+        caffe_net = caffe.Net('/home/raaj/openpose_orig/models/pose/body_25b/pose_deploy.prototxt',
+                        '/home/raaj/openpose_orig/models/pose/body_25b/pose_iter_XXXXXX.caffemodel',
+                        caffe.TEST)
+
+        # Load VGG19
+        weights_load = {}
+        for key in caffe_net.params:
+            W = caffe_net.params[key][0].data[...]
+            weights_load[key+"."+"weight"] = torch.tensor(W)
+            if len(caffe_net.params[key]) > 1:
+                b = caffe_net.params[key][1].data[...]
+                weights_load[key+"."+"bias"] = torch.tensor(b)
+            if key == "prelu4_4_CPM": 
+                break
+        state = self.vgg19.state_dict()
+        state.update(weights_load)
+        self.vgg19.load_state_dict(state)
+
+        # Paf A
+        weights_load = self.load_caffe_se("Mconv1_stage0_L2_0", "Mconv7_stage0_L2", caffe_net, self.pafA)
+        state = self.pafA.state_dict()
+        state.update(weights_load)
+        self.pafA.load_state_dict(state)
+
+        # Paf B
+        weights_load = self.load_caffe_se("Mconv1_stage1_L2_0", "Mconv7_stage1_L2", caffe_net, self.pafB)
+        state = self.pafB.state_dict()
+        state.update(weights_load)
+        self.pafB.load_state_dict(state)
+
+        # Paf C
+        weights_load = self.load_caffe_se("Mconv1_stage2_L2_0", "Mconv7_stage2_L2", caffe_net, self.pafC)
+        state = self.pafC.state_dict()
+        state.update(weights_load)
+        self.pafC.load_state_dict(state)
+
+        # Paf D
+        weights_load = self.load_caffe_se("Mconv1_stage3_L2_0", "Mconv7_stage3_L2", caffe_net, self.pafD)
+        state = self.pafD.state_dict()
+        state.update(weights_load)
+        self.pafD.load_state_dict(state)
+
+        # Paf E
+        weights_load = self.load_caffe_se("Mconv1_stage4_L2_0", "Mconv7_stage4_L2", caffe_net, self.pafE)
+        state = self.pafE.state_dict()
+        state.update(weights_load)
+        self.pafE.load_state_dict(state)
+
+        # Hm B
+        weights_load = self.load_caffe_se("Mconv1_stage0_L1_0", "Mconv7_stage0_L1", caffe_net, self.hmNetwork)
+        state = self.hmNetwork.state_dict()
+        state.update(weights_load)
+        self.hmNetwork.load_state_dict(state)
+
+    def forward(self, input):
+        vgg_out = self.vgg19(input)
+
+        pafA = self.pafA(vgg_out)
+        pafB = self.pafB(torch.cat([vgg_out, pafA], 1))
+        pafC = self.pafC(torch.cat([vgg_out, pafB], 1))
+        pafD = self.pafD(torch.cat([vgg_out, pafC], 1))
+        pafE = self.pafE(torch.cat([vgg_out, pafD], 1))
+        hm = self.hmNetwork(torch.cat([vgg_out, pafE], 1))
+
+        return pafA, pafB, pafC, pafD, pafE, hm
